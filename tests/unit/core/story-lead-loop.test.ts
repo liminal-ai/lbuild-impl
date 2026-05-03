@@ -81,7 +81,7 @@ describe("story-lead loop", () => {
 			storyLeadInvocations.some((invocation) =>
 				invocation.args.includes("resume"),
 			),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			childInvocations.some((invocation) =>
 				invocation.args.some((arg) => arg.includes("--resume=")),
@@ -153,19 +153,24 @@ describe("story-lead loop", () => {
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-quick-fix-001", {
-						type: "run-quick-fix",
-						request:
-							"Apply one bounded quick-fix change for the mini runtime proof fixture only.",
+						action: "run-quick-fix",
 						rationale:
 							"Exercise the quick-fix lane and require the runtime to collect fresh quick-fix evidence.",
+						inputs: {
+							remediationGoal:
+								"Apply one bounded quick-fix change for the mini runtime proof fixture only.",
+						},
 					}),
 				},
 				{
 					stdout: providerWrapper("codex-story-lead-quick-fix-001", {
-						type: "accept-story",
+						action: "accept-story",
 						rationale:
 							"The quick-fix artifact is present and ready for scoped acceptance packaging.",
-						acceptance: {
+						inputs: {
+							summary:
+								"The quick-fix artifact is present and ready for scoped acceptance packaging.",
+							acceptanceCheckRefs: ["quick-fix-artifact-created"],
 							acceptanceChecks: [
 								{
 									name: "quick-fix-artifact-created",
@@ -240,28 +245,35 @@ describe("story-lead loop", () => {
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-flow-3-001", {
-						type: "run-story-implement",
+						action: "run-implement",
 						rationale: "Create implementor evidence before verification.",
+						inputs: {},
 					}),
 				},
 				{
 					stdout: providerWrapper("codex-story-lead-flow-3-001", {
-						type: "run-story-self-review",
-						continuationHandleRef: "storyImplementor",
-						passes: 1,
+						action: "run-self-review",
 						rationale: "Create self-review evidence before verification.",
+						inputs: {
+							artifactRefs: [fixture.childArtifactPaths.implementor],
+							continuationRef: "storyImplementor",
+							passes: 1,
+						},
 					}),
 				},
 				{
 					stdout: providerWrapper("codex-story-lead-flow-3-001", {
-						type: "run-story-verify-initial",
+						action: "run-verify",
 						rationale:
 							"Run story verification so verifier findings and shim audit data exist.",
+						inputs: {
+							artifactRefs: [fixture.childArtifactPaths.selfReviewBatch],
+						},
 					}),
 				},
 				{
 					stdout: providerWrapper("codex-story-lead-flow-3-001", {
-						type: "accept-story",
+						action: "accept-story",
 						rationale:
 							"Preserve explicit verifier dispositions into Flow 3 handoffs.",
 						verification: {
@@ -284,7 +296,10 @@ describe("story-lead loop", () => {
 								},
 							],
 						},
-						acceptance: {
+						inputs: {
+							summary:
+								"Preserve explicit verifier dispositions into Flow 3 handoffs.",
+							acceptanceCheckRefs: ["flow-3-disposition-handoff"],
 							acceptanceChecks: [
 								{
 									name: "flow-3-disposition-handoff",
@@ -531,10 +546,13 @@ describe("story-lead loop", () => {
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-shim-ruling-001", {
-						type: "accept-story",
+						action: "accept-story",
 						rationale:
 							"Acceptance can proceed only if the caller explicitly approves the production fallback.",
-						acceptance: {
+						inputs: {
+							summary:
+								"Acceptance can proceed only if the caller explicitly approves the production fallback.",
+							acceptanceCheckRefs: ["shim-ruling-required"],
 							acceptanceChecks: [
 								{
 									name: "shim-ruling-required",
@@ -596,7 +614,7 @@ describe("story-lead loop", () => {
 		);
 	});
 
-	test("returns a real failed story-lead outcome when a child operation itself fails terminally", async () => {
+	test("records an interrupted story-run when a child operation crashes before a recoverable follow-up turn can complete", async () => {
 		const fixture = await createMiniStoryRuntimeProofFixture(
 			"story-lead-loop-failed-outcome",
 		);
@@ -609,9 +627,10 @@ describe("story-lead loop", () => {
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-failed-001", {
-						type: "run-story-implement",
+						action: "run-implement",
 						rationale:
 							"Attempt the bounded implementor step so the runtime can surface a terminal child-operation failure.",
+						inputs: {},
 					}),
 				},
 			],
@@ -637,9 +656,9 @@ describe("story-lead loop", () => {
 			},
 		});
 
-		if (runEnvelope.result?.case !== "completed") {
+		if (runEnvelope.result?.case !== "interrupted") {
 			throw new Error(
-				`Expected the failed-outcome fixture to complete, received ${runEnvelope.result?.case ?? runEnvelope.status}.`,
+				`Expected the failed-outcome fixture to interrupt, received ${runEnvelope.result?.case ?? runEnvelope.status}.`,
 			);
 		}
 
@@ -652,10 +671,11 @@ describe("story-lead loop", () => {
 			runEnvelope.result.eventHistoryPath,
 		);
 
-		expect(runEnvelope.result.finalPackage.outcome).toBe("failed");
-		expect(runEnvelope.outcome).toBe("failed");
-		expect(currentSnapshot.status).toBe("failed");
-		expect(events.map((event) => event.type)).toContain("failed");
+		expect(runEnvelope.outcome).toBe("interrupted");
+		expect(currentSnapshot.status).toBe("interrupted");
+		expect(events.map((event) => event.type)).toContain(
+			"story-lead-turn-limit",
+		);
 	});
 
 	test("TC-2.6b, TC-3.5d, TC-3.9a, and TC-3.9b preserve review history across a reopened accepted attempt", async () => {

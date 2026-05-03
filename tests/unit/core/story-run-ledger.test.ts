@@ -23,6 +23,7 @@ describe("story-run ledger", () => {
 				storyId,
 				attempt: attempt.attempt,
 				status: "running",
+				lifecycleState: "awaiting_story_lead_action",
 				currentSummary: "Fixture run started.",
 				currentPhase: "story-orchestrate-run",
 				currentChildOperation: null,
@@ -184,6 +185,7 @@ describe("story-run ledger", () => {
 				storyId,
 				attempt: attempt.attempt,
 				status: "failed",
+				lifecycleState: "terminal",
 				currentSummary: "Context window exceeded.",
 				currentPhase: "failure",
 				currentChildOperation: null,
@@ -236,5 +238,54 @@ describe("story-run ledger", () => {
 		);
 		expect(await Bun.file(attempt.progressHistoryPath).exists()).toBe(true);
 		expect(await Bun.file(attempt.progressStatusPath).exists()).toBe(true);
+	});
+
+	test("ignores deprecated storyLeadSession fields when reading older snapshots", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-run-ledger-deprecated-session",
+		);
+		const ledger = createStoryRunLedger({
+			specPackRoot,
+			storyId,
+		});
+		const attempt = await ledger.createAttempt();
+
+		await Bun.write(
+			attempt.currentSnapshotPath,
+			`${JSON.stringify({
+				storyRunId: attempt.storyRunId,
+				storyId,
+				attempt: attempt.attempt,
+				status: "running",
+				lifecycleState: "awaiting_story_lead_action",
+				currentSummary:
+					"Old snapshot still carries a deprecated planner session.",
+				currentPhase: "story-lead-awaiting-action",
+				currentChildOperation: null,
+				latestArtifacts: [],
+				latestContinuationHandles: {},
+				storyLeadSession: {
+					provider: "codex",
+					sessionId: "deprecated-session",
+					model: "gpt-5.4",
+					reasoningEffort: "high",
+				},
+				latestEventSequence: 0,
+				callerInputHistory: {
+					reviewRequests: [],
+					rulings: [],
+				},
+				nextIntent: null,
+				replayBoundary: null,
+				updatedAt: "2026-05-03T00:00:00.000Z",
+			})}\n`,
+		);
+
+		const snapshot = await ledger.readCurrentSnapshot(
+			attempt.currentSnapshotPath,
+		);
+
+		expect(snapshot).not.toHaveProperty("storyLeadSession");
+		expect(snapshot.lifecycleState).toBe("awaiting_story_lead_action");
 	});
 });

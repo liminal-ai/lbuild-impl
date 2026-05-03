@@ -32,7 +32,7 @@ function codexJsonlEventStream(sessionId: string, finalText: string): string {
 }
 
 describe("story-lead provider selection", () => {
-	test("TC-2.9a and TC-2.9b launch the configured Codex story-lead provider and persist its session in durable state", async () => {
+	test("TC-2.1a, TC-2.1b, TC-2.9a, and TC-2.9b launch the configured Codex story-lead provider without persisting planner session state", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-provider-selection",
 			{
@@ -70,10 +70,13 @@ describe("story-lead provider selection", () => {
 					stdout: codexJsonlEventStream(
 						sessionId,
 						JSON.stringify({
-							type: "accept-story",
+							action: "accept-story",
 							rationale:
 								"Configured Codex story-lead provider accepted the preseeded primitive evidence for provider-selection coverage.",
-							acceptance: {
+							inputs: {
+								summary:
+									"Configured Codex story-lead provider accepted the preseeded primitive evidence for provider-selection coverage.",
+								acceptanceCheckRefs: ["configured-provider-session"],
 								acceptanceChecks: [
 									{
 										name: "configured-provider-session",
@@ -91,10 +94,13 @@ describe("story-lead provider selection", () => {
 						}),
 					),
 					lastMessage: JSON.stringify({
-						type: "accept-story",
+						action: "accept-story",
 						rationale:
 							"Configured Codex story-lead provider accepted the preseeded primitive evidence for provider-selection coverage.",
-						acceptance: {
+						inputs: {
+							summary:
+								"Configured Codex story-lead provider accepted the preseeded primitive evidence for provider-selection coverage.",
+							acceptanceCheckRefs: ["configured-provider-session"],
 							acceptanceChecks: [
 								{
 									name: "configured-provider-session",
@@ -153,18 +159,13 @@ describe("story-lead provider selection", () => {
 			}>[number]
 		>(runtime.eventHistoryPath);
 
-		expect(attempt?.currentSnapshot.storyLeadSession).toEqual({
-			provider: "codex",
-			sessionId,
-			model: "gpt-5.4",
-			reasoningEffort: "high",
-		});
+		expect(attempt?.currentSnapshot).not.toHaveProperty("storyLeadSession");
 		expect(events).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					type: "story-lead-provider-started",
 					summary:
-						"Story-lead provider session started for bounded action execution.",
+						"Fresh story-lead provider turn executed without planner session resume.",
 					data: expect.objectContaining({
 						provider: "codex",
 						model: "gpt-5.4",
@@ -182,6 +183,8 @@ describe("story-lead provider selection", () => {
 		);
 		expect(invocations).toHaveLength(1);
 		expect(invocations[0]?.provider).toBe("codex");
+		expect(invocations[0]?.args).not.toContain("resume");
+		expect(invocations[0]?.args.join(" ")).not.toContain("--resume");
 		expect(invocations[0]?.args.slice(0, 6)).toEqual([
 			"exec",
 			"--json",
@@ -192,7 +195,9 @@ describe("story-lead provider selection", () => {
 		]);
 		expect(invocations[0]?.args).toContain("--output-schema");
 		expect(invocations[0]?.args).toContain("-o");
-		expect(invocations[0]?.args.join(" ")).toContain(`Story id: ${storyId}`);
+		expect(invocations[0]?.args.join(" ")).toContain(
+			`You are the story lead for \`${storyId}\``,
+		);
 		expect(invocations[0]?.args.join(" ")).toContain(
 			"# Story Lead Base Prompt",
 		);

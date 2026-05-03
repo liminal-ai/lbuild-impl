@@ -239,6 +239,7 @@ describe("heartbeat emitter", () => {
 				storyId: "00-foundation",
 				attempt: 1,
 				status: "running",
+				lifecycleState: "awaiting_story_lead_action",
 				currentSummary: "Story run is active.",
 				currentPhase: "story-orchestrate-run",
 				currentChildOperation: null,

@@ -167,10 +167,13 @@ function createFinalPackage() {
 describe("story-orchestrate contracts", () => {
 	test("accepts terminal story-lead actions that carry verifier dispositions and shim/mock risk decisions", () => {
 		const action = storyLeadActionSchema.parse({
-			type: "accept-story",
+			action: "accept-story",
 			rationale:
 				"Verifier findings are classified and shim/mock decisions are preserved for Flow 3 handoff.",
-			acceptance: {
+			inputs: {
+				summary:
+					"Verifier findings are classified and shim/mock decisions are preserved for Flow 3 handoff.",
+				acceptanceCheckRefs: ["finding-dispositions-classified"],
 				acceptanceChecks: [
 					{
 						name: "finding-dispositions-classified",
@@ -205,8 +208,8 @@ describe("story-orchestrate contracts", () => {
 			},
 		});
 
-		expect(action.type).toBe("accept-story");
-		if (action.type !== "accept-story") {
+		expect(action.action).toBe("accept-story");
+		if (action.action !== "accept-story") {
 			throw new Error("Expected accept-story action.");
 		}
 		expect(action.verification?.findings[0]?.status).toBe("accepted-risk");
@@ -282,6 +285,7 @@ describe("story-orchestrate contracts", () => {
 				storyId: finalPackage.storyId,
 				attempt: 1,
 				status: "needs-ruling",
+				lifecycleState: "terminal",
 				currentSummary: "Waiting for caller ruling.",
 				currentPhase: "awaiting-ruling",
 				currentChildOperation: null,
@@ -297,12 +301,6 @@ describe("story-orchestrate contracts", () => {
 						sessionId: "codex-session-123",
 						storyId: "00-foundation",
 					},
-				},
-				storyLeadSession: {
-					provider: "codex",
-					sessionId: "codex-session-123",
-					model: "gpt-5.4",
-					reasoningEffort: "high",
 				},
 				latestEventSequence: 3,
 				callerInputHistory: {

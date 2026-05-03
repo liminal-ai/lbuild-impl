@@ -106,10 +106,13 @@ function providerWrapper(sessionId: string, payload: unknown): string {
 
 function buildStoryLeadAcceptAction() {
 	return {
-		type: "accept-story",
+		action: "accept-story",
 		rationale:
 			"Implementor, self-review, and verifier evidence are present for the mini runtime proof fixture.",
-		acceptance: {
+		inputs: {
+			summary:
+				"Implementor, self-review, and verifier evidence are present for the mini runtime proof fixture.",
+			acceptanceCheckRefs: ["child-artifacts-created"],
 			acceptanceChecks: [
 				{
 					name: "child-artifacts-created",
@@ -245,9 +248,9 @@ export async function createMiniStoryRuntimeProofFixture(
 			"# Technical Design",
 			"",
 			"## StoryLeadAction loop",
-			"- run-story-implement",
-			"- run-story-self-review",
-			"- run-story-verify-initial",
+			"- run-implement",
+			"- run-self-review",
+			"- run-verify",
 			"- accept-story",
 		].join("\n"),
 	);
@@ -382,25 +385,32 @@ export async function installMiniStoryRuntimeProofProviders(
 		responses: [
 			{
 				stdout: providerWrapper("codex-story-lead-proof-001", {
-					type: "run-story-implement",
+					action: "run-implement",
 					rationale:
 						"Start with the bounded implementor operation so the proof can observe real child artifact creation.",
+					inputs: {},
 				}),
 			},
 			{
 				stdout: providerWrapper("codex-story-lead-proof-001", {
-					type: "run-story-self-review",
-					continuationHandleRef: "storyImplementor",
-					passes: 1,
+					action: "run-self-review",
 					rationale:
 						"Use the retained implementor continuation for a single explicit self-review pass.",
+					inputs: {
+						artifactRefs: [fixture.childArtifactPaths.implementor],
+						continuationRef: "storyImplementor",
+						passes: 1,
+					},
 				}),
 			},
 			{
 				stdout: providerWrapper("codex-story-lead-proof-001", {
-					type: "run-story-verify-initial",
+					action: "run-verify",
 					rationale:
 						"Run the verifier after implementation and self-review artifacts are present.",
+					inputs: {
+						artifactRefs: [fixture.childArtifactPaths.selfReviewBatch],
+					},
 				}),
 			},
 			{

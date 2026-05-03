@@ -41,6 +41,10 @@ import {
 	createCallerInputHistory,
 } from "./review-ruling.js";
 import { buildStoryLeadFinalPackage } from "./story-final-package.js";
+import {
+	buildStoryLeadPlannerContext,
+	describeStoryLeadContextSources,
+} from "./story-lead-context.js";
 import { assembleStoryLeadPrompt } from "./story-lead-prompt.js";
 import type {
 	ArtifactRef,
@@ -51,7 +55,9 @@ import type {
 	RiskOrDeviationItem,
 	StoryLeadAcceptanceSummary,
 	StoryLeadAction,
+	StoryLeadContextOverflowError,
 	StoryLeadFinalPackage,
+	StoryLeadPlannerContext,
 	StoryLeadRiskAndDeviationReview,
 	StoryLeadVerification,
 	StoryRunCurrentSnapshot,
@@ -61,6 +67,10 @@ import {
 	type ImplLeadReviewRequest,
 	storyLeadActionSchema,
 } from "./story-orchestrate-contracts.js";
+import {
+	assertStoryLeadActionAllowed,
+	type StoryLeadActionType,
+} from "./story-lead-state-machine.js";
 import { resolveStoryOrder } from "./story-order.js";
 import type {
 	StoryRunAttemptPaths,
@@ -75,6 +85,8 @@ const STORY_ORCHESTRATE_INCOMPLETE_ENV =
 	"LBUILD_IMPL_STORY_ORCHESTRATE_INCOMPLETE";
 const STORY_ORCHESTRATE_FAILURE_MODE_ENV =
 	"LBUILD_IMPL_STORY_ORCHESTRATE_FAILURE_MODE";
+const STORY_ORCHESTRATE_CRASH_AFTER_CHILD_RESULT_ENV =
+	"LBUILD_IMPL_STORY_ORCHESTRATE_CRASH_AFTER_CHILD_RESULT";
 const STORY_LEAD_MAX_TURNS = 12;
 
 export interface StoryLeadRuntimeInput {
@@ -207,6 +219,10 @@ function readFailureMode():
 	}
 
 	return null;
+}
+
+function shouldCrashAfterChildResult(): boolean {
+	return process.env[STORY_ORCHESTRATE_CRASH_AFTER_CHILD_RESULT_ENV] === "1";
 }
 
 function providerForHarness(
@@ -378,6 +394,7 @@ function buildSnapshot(input: {
 	storyId: string;
 	attemptPaths: StoryRunAttemptPaths;
 	status: StoryRunCurrentSnapshot["status"];
+	lifecycleState: StoryRunCurrentSnapshot["lifecycleState"];
 	currentSummary: string;
 	currentPhase: string;
 	latestArtifacts: ArtifactRef[];
@@ -387,13 +404,13 @@ function buildSnapshot(input: {
 	nextIntent: StoryRunCurrentSnapshot["nextIntent"];
 	replayBoundary?: ReplayBoundary | null;
 	currentChildOperation?: StoryRunCurrentSnapshot["currentChildOperation"];
-	storyLeadSession?: StoryRunCurrentSnapshot["storyLeadSession"];
 }): StoryRunCurrentSnapshot {
 	return {
 		storyRunId: input.attemptPaths.storyRunId,
 		storyId: input.storyId,
 		attempt: input.attemptPaths.attempt,
 		status: input.status,
+		lifecycleState: input.lifecycleState,
 		currentSummary: input.currentSummary,
 		currentPhase: input.currentPhase,
 		currentChildOperation: input.currentChildOperation ?? null,
@@ -403,9 +420,6 @@ function buildSnapshot(input: {
 		callerInputHistory: input.callerInputHistory ?? createCallerInputHistory(),
 		nextIntent: input.nextIntent,
 		replayBoundary: input.replayBoundary ?? null,
-		...(input.storyLeadSession
-			? { storyLeadSession: input.storyLeadSession }
-			: {}),
 		updatedAt: nowIso(),
 	};
 }
@@ -522,82 +536,45 @@ function formatElapsed(startedAt: number): string {
 	return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
-function buildStoryLeadDurableStateSummary(input: {
-	specPackRoot: string;
-	storyId: string;
-	storyTitle: string;
-	storyRunId: string;
-	mode: "run" | "resume";
-	currentSnapshot: StoryRunCurrentSnapshot;
-	reviewRequest?: ImplLeadReviewRequest;
-	ruling?: CallerRulingResponse;
-	lastTurnSummary?: string;
-}): string {
-	const handles = Object.entries(
-		input.currentSnapshot.latestContinuationHandles,
-	);
-	const artifacts = input.currentSnapshot.latestArtifacts;
-	const nextIntent = input.currentSnapshot.nextIntent
-		? JSON.stringify(input.currentSnapshot.nextIntent, null, 2)
-		: "null";
-
-	return [
-		`Spec pack root: ${input.specPackRoot}`,
-		`Story id: ${input.storyId}`,
-		`Story title: ${input.storyTitle}`,
-		`Story run id: ${input.storyRunId}`,
-		`Mode: ${input.mode}`,
-		`Current status: ${input.currentSnapshot.status}`,
-		`Current phase: ${input.currentSnapshot.currentPhase}`,
-		`Current summary: ${input.currentSnapshot.currentSummary}`,
-		`Last turn summary: ${input.lastTurnSummary ?? "none"}`,
-		input.reviewRequest
-			? `Active impl-lead review request: ${input.reviewRequest.summary}`
-			: "Active impl-lead review request: none",
-		input.ruling
-			? `Active caller ruling: ${input.ruling.rulingRequestId} -> ${input.ruling.decision}`
-			: "Active caller ruling: none",
-		"Available continuation handles:",
-		...(handles.length > 0
-			? handles.map(([ref, handle]) => `- ${ref}: ${JSON.stringify(handle)}`)
-			: ["- none"]),
-		"Latest artifacts:",
-		...(artifacts.length > 0
-			? artifacts.map((artifact) => `- ${artifact.kind}: ${artifact.path}`)
-			: ["- none"]),
-		`Caller input history: ${JSON.stringify(
-			input.currentSnapshot.callerInputHistory,
-			null,
-			2,
-		)}`,
-		`Current nextIntent: ${nextIntent}`,
-	].join("\n");
-}
-
 async function buildStoryLeadActionPrompt(input: {
 	specPackRoot: string;
-	storyId: string;
-	storyTitle: string;
 	storyRunId: string;
 	mode: "run" | "resume";
 	currentSnapshot: StoryRunCurrentSnapshot;
-	gateCommands: {
-		story?: string;
-		epic?: string;
+	currentSnapshotPath: string;
+	eventHistoryPath: string;
+	provider: ProviderName;
+	model: string;
+	runtimeSettings: {
+		storyGate?: string;
+		epicGate?: string;
+		plannerTimeoutMs: number;
+		wholeRunTimeoutMs: number;
+		providerStartupTimeoutMs: number;
+		providerActiveSilenceTimeoutMs?: number;
 	};
-	reviewRequest?: ImplLeadReviewRequest;
-	ruling?: CallerRulingResponse;
-	lastTurnSummary?: string;
-}): Promise<string> {
-	return await assembleStoryLeadPrompt({
+	providerLimitBytes?: number;
+}): Promise<{
+	prompt: string;
+	context: StoryLeadPlannerContext;
+}> {
+	const plannerContext = await buildStoryLeadPlannerContext({
 		specPackRoot: input.specPackRoot,
-		storyId: input.storyId,
-		storyTitle: input.storyTitle,
+		storyId: input.currentSnapshot.storyId,
 		storyRunId: input.storyRunId,
 		mode: input.mode,
-		durableStateSummary: buildStoryLeadDurableStateSummary(input),
-		gateCommands: input.gateCommands,
+		currentSnapshot: input.currentSnapshot,
+		currentSnapshotPath: input.currentSnapshotPath,
+		eventHistoryPath: input.eventHistoryPath,
+		provider: input.provider,
+		model: input.model,
+		runtimeSettings: input.runtimeSettings,
+		providerLimitBytes: input.providerLimitBytes,
 	});
+	return {
+		prompt: assembleStoryLeadPrompt(plannerContext),
+		context: plannerContext,
+	};
 }
 
 function semanticArtifactRefsFromEnvelope<TResult>(
@@ -619,6 +596,16 @@ function lastSemanticArtifactPath(
 	return artifacts.at(-1)?.path;
 }
 
+function maybeCrashAfterChildResult(command: string): void {
+	if (!shouldCrashAfterChildResult()) {
+		return;
+	}
+
+	throw new Error(
+		`Simulated runtime crash after ${command} child result was durably recorded.`,
+	);
+}
+
 function operationSummaryFromEnvelope<TResult>(
 	command: string,
 	envelope: OperationEnvelope<TResult>,
@@ -630,31 +617,6 @@ function operationSummaryFromEnvelope<TResult>(
 					.join("; ")}`
 			: "";
 	return `${command} completed with outcome ${envelope.outcome} and status ${envelope.status}.${errorSummary}`;
-}
-
-function terminalFailureForChildOperation<TResult>(input: {
-	command: string;
-	envelope: OperationEnvelope<TResult>;
-}): {
-	reason: string;
-	detail?: string;
-	rationale: string;
-} | null {
-	if (
-		input.envelope.errors.length === 0 ||
-		(input.envelope.status !== "blocked" && input.envelope.status !== "error")
-	) {
-		return null;
-	}
-
-	return {
-		reason: `${input.command} failed during story-lead execution.`,
-		detail: input.envelope.errors
-			.map((error) => `${error.code}: ${error.message}`)
-			.join("; "),
-		rationale:
-			"Story-lead cannot safely continue after a terminal child-operation failure and must hand back a failed package instead of pretending the run is merely blocked or interrupted.",
-	};
 }
 
 function extractContinuationHandle<TResult extends { continuation?: unknown }>(
@@ -898,6 +860,86 @@ function providerFailureSummary<TResult>(
 		: "Story-lead provider failed before it returned a valid bounded action.";
 }
 
+function providerFailureLooksLikeContextOverflow<TResult>(
+	execution: ProviderExecutionResult<TResult>,
+): boolean {
+	const diagnostic = [
+		execution.errorCode,
+		execution.parseError,
+		execution.stderr,
+		execution.stdout,
+	]
+		.filter(
+			(value): value is string =>
+				typeof value === "string" && value.trim().length > 0,
+		)
+		.join("\n")
+		.toLowerCase();
+
+	return (
+		/(context|input|prompt|token)/u.test(diagnostic) &&
+		/(overflow|limit|too large|too long|maximum|max tokens|context_length)/u.test(
+			diagnostic,
+		)
+	);
+}
+
+function providerContextOverflowError(input: {
+	storyId: string;
+	storyRunId: string;
+	provider: ProviderName;
+	model: string;
+	context: StoryLeadPlannerContext;
+}): StoryLeadContextOverflowError {
+	const { requiredContextBytes, largestSources } =
+		describeStoryLeadContextSources(input.context);
+	return {
+		code: "STORY_LEAD_CONTEXT_OVERFLOW",
+		storyId: input.storyId,
+		storyRunId: input.storyRunId,
+		provider: input.provider,
+		model: input.model,
+		requiredContextBytes,
+		largestSources,
+	};
+}
+
+function actionTypeForStateValidation(
+	action: StoryLeadAction,
+): StoryLeadActionType {
+	switch (action.action) {
+		case "run-implement":
+			return "run-implement";
+		case "run-continue":
+			return "run-continue";
+		case "run-self-review":
+			return "run-self-review";
+		case "run-verify":
+			return "run-verify";
+		case "run-quick-fix":
+			return "run-quick-fix";
+		case "accept-story":
+			return "accept-story";
+		case "request-ruling":
+			return "request-ruling";
+		case "block-story":
+			return "block-story";
+		case "fail-story":
+			return "fail-story";
+	}
+}
+
+function isContextOverflowError(
+	error: unknown,
+): error is StoryLeadContextOverflowError {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === "STORY_LEAD_CONTEXT_OVERFLOW"
+	);
+}
+
 export async function runStoryLead(
 	input: StoryLeadRuntimeInput,
 ): Promise<StoryLeadRuntimeResult> {
@@ -918,7 +960,7 @@ export async function runStoryLead(
 	});
 	const callerHarnessConfig = loadedConfig?.caller_harness;
 	const storyLeadAssignment = resolveStoryLeadAssignment(loadedConfig);
-	const gateCommands = loadedConfig?.verification_gates ?? {};
+	const gateCommands = loadedConfig?.verification_gates;
 	const timeouts = loadedConfig ? resolveRunTimeouts(loadedConfig) : undefined;
 	const resolvedHeartbeat = resolveCallerHeartbeatOptions({
 		callerHarness: input.callerHarness,
@@ -970,6 +1012,7 @@ export async function runStoryLead(
 		storyId,
 		attemptPaths,
 		status: "running",
+		lifecycleState: "initialized",
 		currentSummary:
 			input.mode === "run"
 				? "Story orchestration started and durable state has been initialized."
@@ -1002,8 +1045,6 @@ export async function runStoryLead(
 		},
 		currentChildOperation:
 			input.mode === "resume" ? priorSnapshot?.currentChildOperation : null,
-		storyLeadSession:
-			input.mode === "resume" ? priorSnapshot?.storyLeadSession : undefined,
 	});
 
 	const writeCurrentSnapshot = async () => {
@@ -1029,6 +1070,7 @@ export async function runStoryLead(
 
 	const overwriteSnapshot = async (inputSnapshot: {
 		status: StoryRunCurrentSnapshot["status"];
+		lifecycleState: StoryRunCurrentSnapshot["lifecycleState"];
 		currentSummary: string;
 		currentPhase: string;
 		latestArtifacts?: ArtifactRef[];
@@ -1037,12 +1079,12 @@ export async function runStoryLead(
 		nextIntent: StoryRunCurrentSnapshot["nextIntent"];
 		replayBoundary?: ReplayBoundary | null;
 		currentChildOperation?: StoryRunCurrentSnapshot["currentChildOperation"];
-		storyLeadSession?: StoryRunCurrentSnapshot["storyLeadSession"];
 	}) => {
 		currentSnapshot = buildSnapshot({
 			storyId,
 			attemptPaths,
 			status: inputSnapshot.status,
+			lifecycleState: inputSnapshot.lifecycleState,
 			currentSummary: inputSnapshot.currentSummary,
 			currentPhase: inputSnapshot.currentPhase,
 			latestArtifacts:
@@ -1058,8 +1100,6 @@ export async function runStoryLead(
 			currentChildOperation:
 				inputSnapshot.currentChildOperation ??
 				currentSnapshot.currentChildOperation,
-			storyLeadSession:
-				inputSnapshot.storyLeadSession ?? currentSnapshot.storyLeadSession,
 		});
 		await writeCurrentSnapshot();
 	};
@@ -1071,7 +1111,6 @@ export async function runStoryLead(
 		currentSummary: string;
 		nextIntentSummary: string;
 		eventData?: Record<string, unknown>;
-		storyLeadSession?: StoryRunCurrentSnapshot["storyLeadSession"];
 	}) => {
 		const replayBoundary = replayBoundaryForFailure({
 			reason: params.reason,
@@ -1092,6 +1131,7 @@ export async function runStoryLead(
 		await appendRunEvent(interruptedEvent);
 		await overwriteSnapshot({
 			status: "interrupted",
+			lifecycleState: "terminal",
 			currentSummary: params.currentSummary,
 			currentPhase: "interrupted",
 			nextIntent: {
@@ -1099,7 +1139,6 @@ export async function runStoryLead(
 				summary: params.nextIntentSummary,
 			},
 			replayBoundary,
-			storyLeadSession: params.storyLeadSession,
 		});
 		input.progressListener?.(
 			buildAttachedEvent({
@@ -1161,6 +1200,7 @@ export async function runStoryLead(
 	await appendRunEvent(openedEvent);
 	await overwriteSnapshot({
 		status: "running",
+		lifecycleState: "awaiting_story_lead_action",
 		currentSummary: currentSnapshot.currentSummary,
 		currentPhase: currentSnapshot.currentPhase,
 		nextIntent: currentSnapshot.nextIntent,
@@ -1200,6 +1240,7 @@ export async function runStoryLead(
 		await appendRunEvent(reviewEvent);
 		await overwriteSnapshot({
 			status: "running",
+			lifecycleState: "awaiting_story_lead_action",
 			currentSummary:
 				"Review request recorded and story-lead reopen handling is underway.",
 			currentPhase: "review-requested",
@@ -1249,6 +1290,7 @@ export async function runStoryLead(
 		await appendRunEvent(rulingEvent);
 		await overwriteSnapshot({
 			status: "running",
+			lifecycleState: "awaiting_story_lead_action",
 			currentSummary:
 				"Caller ruling recorded and story-lead finalization is resuming.",
 			currentPhase: "ruling-received",
@@ -1355,12 +1397,6 @@ export async function runStoryLead(
 		}
 
 		let terminalDecision: StoryLeadTerminalDecision | null = null;
-		let lastTurnSummary =
-			input.startedFromPrimitiveArtifacts &&
-			input.startedFromPrimitiveArtifacts.length > 0
-				? `Inherited ${input.startedFromPrimitiveArtifacts.length} primitive artifact(s) before story-lead action selection.`
-				: "No child operations have run in this invocation yet.";
-
 		if (storyLeadAssignment) {
 			const provider = providerForHarness(
 				storyLeadAssignment.secondary_harness,
@@ -1368,68 +1404,48 @@ export async function runStoryLead(
 			const adapter = createProviderAdapter(provider, {
 				env: input.env,
 			});
-			let providerSessionRecorded = false;
-
-			const recordStoryLeadSession = async (executionSessionId?: string) => {
-				const sessionId =
-					executionSessionId ?? currentSnapshot.storyLeadSession?.sessionId;
-				if (!sessionId || providerSessionRecorded) {
-					return currentSnapshot.storyLeadSession;
-				}
-
-				const storyLeadSession = {
-					provider,
-					sessionId,
-					model: storyLeadAssignment.model,
-					reasoningEffort: storyLeadAssignment.reasoning_effort,
-				};
+			const recordPlannerTurnEvent = async (
+				executionSessionId?: string,
+			): Promise<void> => {
 				const providerEvent = buildEvent({
 					storyRunId: attemptPaths.storyRunId,
 					sequence: currentSnapshot.latestEventSequence + 1,
-					type:
-						input.mode === "resume" &&
-						priorSnapshot?.storyLeadSession?.provider === provider
-							? "story-lead-provider-resumed"
-							: "story-lead-provider-started",
+					type: "story-lead-provider-started",
 					summary:
-						input.mode === "resume" &&
-						priorSnapshot?.storyLeadSession?.provider === provider
-							? "Story-lead provider session resumed for bounded action execution."
-							: "Story-lead provider session started for bounded action execution.",
+						"Fresh story-lead provider turn executed without planner session resume.",
 					data: {
 						provider,
 						model: storyLeadAssignment.model,
 						reasoningEffort: storyLeadAssignment.reasoning_effort,
-						sessionId,
+						...(executionSessionId ? { sessionId: executionSessionId } : {}),
 					},
 				});
 				await appendRunEvent(providerEvent);
 				await overwriteSnapshot({
 					status: "running",
+					lifecycleState: "awaiting_story_lead_action",
 					currentSummary: providerEvent.summary,
 					currentPhase: "story-lead-awaiting-action",
 					callerInputHistory,
 					nextIntent: {
 						actionType: "await-story-lead-action",
 						summary:
-							"Await the next structured StoryLeadAction from the provider session.",
+							"Await the next structured StoryLeadAction from the fresh provider turn.",
 					},
 					replayBoundary: null,
-					storyLeadSession,
 				});
-				providerSessionRecorded = true;
-				return storyLeadSession;
 			};
 
 			const runChildOperation = async (
 				action: StoryLeadAction,
 			): Promise<string | StoryLeadRuntimeResult> => {
-				switch (action.type) {
-					case "run-story-implement": {
+				switch (action.action) {
+					case "run-implement": {
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "running_child_operation",
 							currentSummary: `Running story-implement: ${action.rationale}`,
-							currentPhase: "run-story-implement",
+							currentPhase: "run-implement",
 							nextIntent: {
 								actionType: "await-story-implement",
 								summary: action.rationale,
@@ -1461,7 +1477,7 @@ export async function runStoryLead(
 							),
 							artifact: lastSemanticArtifactPath(artifactRefs),
 							data: {
-								actionType: action.type,
+								actionType: action.action,
 								command: "story-implement",
 								outcome: envelope.outcome,
 								status: envelope.status,
@@ -1470,6 +1486,7 @@ export async function runStoryLead(
 						await appendRunEvent(completionEvent);
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "awaiting_story_lead_action",
 							currentSummary: completionEvent.summary,
 							currentPhase: "story-lead-awaiting-action",
 							latestArtifacts: mergeArtifacts(
@@ -1492,43 +1509,19 @@ export async function runStoryLead(
 							currentChildOperation: null,
 							replayBoundary: null,
 						});
-						const terminalFailure = terminalFailureForChildOperation({
-							command: "story-implement",
-							envelope,
-						});
-						if (terminalFailure) {
-							terminalDecision = {
-								kind: "fail",
-								reason: terminalFailure.reason,
-								detail: terminalFailure.detail,
-								rationale: terminalFailure.rationale,
-							};
-							return completionEvent.summary;
-						}
-						if (envelope.status === "error") {
-							return await buildInterruptedResult({
-								reason: "interrupted",
-								eventType: "child-operation-error",
-								eventSummary:
-									"story-implement failed before the story-lead could safely continue.",
-								currentSummary:
-									"story-implement failed before the story-lead could safely continue.",
-								nextIntentSummary:
-									"Resume from the latest durable child artifact or restart the bounded child operation.",
-							});
-						}
+						maybeCrashAfterChildResult("story-implement");
 						return completionEvent.summary;
 					}
-					case "run-story-continue": {
+					case "run-continue": {
 						const continuation =
 							currentSnapshot.latestContinuationHandles[
-								action.continuationHandleRef
+								action.inputs.continuationRef
 							];
 						if (!continuation) {
 							return await buildInterruptedResult({
 								reason: "provider-output-invalid",
 								eventType: "provider-output-invalid",
-								eventSummary: `Story-lead referenced unknown continuation handle '${action.continuationHandleRef}'.`,
+								eventSummary: `Story-lead referenced unknown continuation handle '${action.inputs.continuationRef}'.`,
 								currentSummary:
 									"Story-lead returned an invalid continuation-handle reference.",
 								nextIntentSummary:
@@ -1537,16 +1530,17 @@ export async function runStoryLead(
 						}
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "running_child_operation",
 							currentSummary: `Running story-continue: ${action.rationale}`,
-							currentPhase: "run-story-continue",
+							currentPhase: "run-continue",
 							nextIntent: {
 								actionType: "await-story-continue",
 								summary: action.rationale,
-								continuationHandleRef: action.continuationHandleRef,
+								continuationHandleRef: action.inputs.continuationRef,
 							},
 							currentChildOperation: {
 								command: "story-continue",
-								continuationHandleRef: action.continuationHandleRef,
+								continuationHandleRef: action.inputs.continuationRef,
 							},
 							replayBoundary: null,
 						});
@@ -1554,7 +1548,7 @@ export async function runStoryLead(
 							specPackRoot: input.specPackRoot,
 							storyId,
 							continuationHandle: continuation,
-							followupRequest: action.request,
+							followupRequest: action.inputs.promptAddendum,
 							configPath: input.configPath,
 							env: input.env,
 							disableHeartbeats: true,
@@ -1572,7 +1566,7 @@ export async function runStoryLead(
 							summary: operationSummaryFromEnvelope("story-continue", envelope),
 							artifact: lastSemanticArtifactPath(artifactRefs),
 							data: {
-								actionType: action.type,
+								actionType: action.action,
 								command: "story-continue",
 								outcome: envelope.outcome,
 								status: envelope.status,
@@ -1581,6 +1575,7 @@ export async function runStoryLead(
 						await appendRunEvent(completionEvent);
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "awaiting_story_lead_action",
 							currentSummary: completionEvent.summary,
 							currentPhase: "story-lead-awaiting-action",
 							latestArtifacts: mergeArtifacts(
@@ -1601,43 +1596,19 @@ export async function runStoryLead(
 							currentChildOperation: null,
 							replayBoundary: null,
 						});
-						const terminalFailure = terminalFailureForChildOperation({
-							command: "story-continue",
-							envelope,
-						});
-						if (terminalFailure) {
-							terminalDecision = {
-								kind: "fail",
-								reason: terminalFailure.reason,
-								detail: terminalFailure.detail,
-								rationale: terminalFailure.rationale,
-							};
-							return completionEvent.summary;
-						}
-						if (envelope.status === "error") {
-							return await buildInterruptedResult({
-								reason: "interrupted",
-								eventType: "child-operation-error",
-								eventSummary:
-									"story-continue failed before the story-lead could safely continue.",
-								currentSummary:
-									"story-continue failed before the story-lead could safely continue.",
-								nextIntentSummary:
-									"Resume from the latest durable child artifact or restart the bounded child operation.",
-							});
-						}
+						maybeCrashAfterChildResult("story-continue");
 						return completionEvent.summary;
 					}
-					case "run-story-self-review": {
+					case "run-self-review": {
+						const continuationRef =
+							action.inputs.continuationRef ?? "storyImplementor";
 						const continuation =
-							currentSnapshot.latestContinuationHandles[
-								action.continuationHandleRef
-							];
+							currentSnapshot.latestContinuationHandles[continuationRef];
 						if (!continuation) {
 							return await buildInterruptedResult({
 								reason: "provider-output-invalid",
 								eventType: "provider-output-invalid",
-								eventSummary: `Story-lead referenced unknown continuation handle '${action.continuationHandleRef}'.`,
+								eventSummary: `Story-lead referenced unknown continuation handle '${continuationRef}'.`,
 								currentSummary:
 									"Story-lead returned an invalid self-review continuation-handle reference.",
 								nextIntentSummary:
@@ -1646,16 +1617,17 @@ export async function runStoryLead(
 						}
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "running_child_operation",
 							currentSummary: `Running story-self-review: ${action.rationale}`,
-							currentPhase: "run-story-self-review",
+							currentPhase: "run-self-review",
 							nextIntent: {
 								actionType: "await-story-self-review",
 								summary: action.rationale,
-								continuationHandleRef: action.continuationHandleRef,
+								continuationHandleRef: continuationRef,
 							},
 							currentChildOperation: {
 								command: "story-self-review",
-								continuationHandleRef: action.continuationHandleRef,
+								continuationHandleRef: continuationRef,
 							},
 							replayBoundary: null,
 						});
@@ -1663,7 +1635,7 @@ export async function runStoryLead(
 							specPackRoot: input.specPackRoot,
 							storyId,
 							continuationHandle: continuation,
-							passes: action.passes,
+							passes: action.inputs.passes ?? 1,
 							passArtifactPaths: [],
 							configPath: input.configPath,
 							env: input.env,
@@ -1685,7 +1657,7 @@ export async function runStoryLead(
 							),
 							artifact: lastSemanticArtifactPath(artifactRefs),
 							data: {
-								actionType: action.type,
+								actionType: action.action,
 								command: "story-self-review",
 								outcome: envelope.outcome,
 								status: envelope.status,
@@ -1694,6 +1666,7 @@ export async function runStoryLead(
 						await appendRunEvent(completionEvent);
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "awaiting_story_lead_action",
 							currentSummary: completionEvent.summary,
 							currentPhase: "story-lead-awaiting-action",
 							latestArtifacts: mergeArtifacts(
@@ -1714,38 +1687,123 @@ export async function runStoryLead(
 							currentChildOperation: null,
 							replayBoundary: null,
 						});
-						const terminalFailure = terminalFailureForChildOperation({
-							command: "story-self-review",
-							envelope,
-						});
-						if (terminalFailure) {
-							terminalDecision = {
-								kind: "fail",
-								reason: terminalFailure.reason,
-								detail: terminalFailure.detail,
-								rationale: terminalFailure.rationale,
-							};
-							return completionEvent.summary;
-						}
-						if (envelope.status === "error") {
-							return await buildInterruptedResult({
-								reason: "interrupted",
-								eventType: "child-operation-error",
-								eventSummary:
-									"story-self-review failed before the story-lead could safely continue.",
-								currentSummary:
-									"story-self-review failed before the story-lead could safely continue.",
-								nextIntentSummary:
-									"Resume from the latest durable child artifact or restart the bounded child operation.",
-							});
-						}
+						maybeCrashAfterChildResult("story-self-review");
 						return completionEvent.summary;
 					}
-					case "run-story-verify-initial": {
+					case "run-verify": {
+						if (action.inputs.verifierContinuationRef) {
+							const continuation =
+								currentSnapshot.latestContinuationHandles[
+									action.inputs.verifierContinuationRef
+								];
+							if (!continuation) {
+								return await buildInterruptedResult({
+									reason: "provider-output-invalid",
+									eventType: "provider-output-invalid",
+									eventSummary: `Story-lead referenced unknown verifier continuation handle '${action.inputs.verifierContinuationRef}'.`,
+									currentSummary:
+										"Story-lead returned an invalid verifier continuation-handle reference.",
+									nextIntentSummary:
+										"Resume from the last valid child artifact after correcting the story-lead action response.",
+								});
+							}
+							let response: string | undefined = action.inputs.responseText;
+							if (!response && action.inputs.responseArtifactRef) {
+								const artifactPath = currentSnapshot.latestArtifacts.find(
+									(artifact) =>
+										artifact.path === action.inputs.responseArtifactRef,
+								)?.path;
+								if (!artifactPath) {
+									return await buildInterruptedResult({
+										reason: "provider-output-invalid",
+										eventType: "provider-output-invalid",
+										eventSummary: `Story-lead referenced unknown artifact '${action.inputs.responseArtifactRef}'.`,
+										currentSummary:
+											"Story-lead returned an invalid verifier response artifact reference.",
+										nextIntentSummary:
+											"Resume from the last valid child artifact after correcting the story-lead action response.",
+									});
+								}
+								response = await readTextFile(artifactPath);
+							}
+							await overwriteSnapshot({
+								status: "running",
+								lifecycleState: "running_child_operation",
+								currentSummary: `Running story-verify follow-up: ${action.rationale}`,
+								currentPhase: "run-verify-followup",
+								nextIntent: {
+									actionType: "await-story-verify-followup",
+									summary: action.rationale,
+									continuationHandleRef: action.inputs.verifierContinuationRef,
+								},
+								currentChildOperation: {
+									command: "story-verify",
+									continuationHandleRef: action.inputs.verifierContinuationRef,
+								},
+								replayBoundary: null,
+							});
+							const envelope = (await storyVerify({
+								specPackRoot: input.specPackRoot,
+								storyId,
+								provider: continuation.provider,
+								sessionId: continuation.sessionId,
+								response,
+								orchestratorContext: action.inputs.orchestratorContext,
+								configPath: input.configPath,
+								env: input.env,
+								disableHeartbeats: true,
+							})) as OperationEnvelope<StoryVerifierResult>;
+							const artifactRefs = semanticArtifactRefsFromEnvelope(
+								"story-verify",
+								envelope,
+							);
+							const updatedContinuation =
+								extractContinuationHandle(envelope) ?? continuation;
+							const completionEvent = buildEvent({
+								storyRunId: attemptPaths.storyRunId,
+								sequence: currentSnapshot.latestEventSequence + 1,
+								type: "child-operation-completed",
+								summary: operationSummaryFromEnvelope("story-verify", envelope),
+								artifact: lastSemanticArtifactPath(artifactRefs),
+								data: {
+									actionType: action.action,
+									command: "story-verify",
+									outcome: envelope.outcome,
+									status: envelope.status,
+								},
+							});
+							await appendRunEvent(completionEvent);
+							await overwriteSnapshot({
+								status: "running",
+								lifecycleState: "awaiting_story_lead_action",
+								currentSummary: completionEvent.summary,
+								currentPhase: "story-lead-awaiting-action",
+								latestArtifacts: mergeArtifacts(
+									currentSnapshot.latestArtifacts,
+									artifactRefs,
+								),
+								latestContinuationHandles: {
+									...currentSnapshot.latestContinuationHandles,
+									storyVerifier: updatedContinuation,
+								},
+								nextIntent: {
+									actionType: "await-story-lead-action",
+									summary: action.rationale,
+									...(artifactRefs.at(-1)
+										? { artifactRef: artifactRefs.at(-1)?.path }
+										: {}),
+								},
+								currentChildOperation: null,
+								replayBoundary: null,
+							});
+							maybeCrashAfterChildResult("story-verify");
+							return completionEvent.summary;
+						}
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "running_child_operation",
 							currentSummary: `Running story-verify initial pass: ${action.rationale}`,
-							currentPhase: "run-story-verify-initial",
+							currentPhase: "run-verify",
 							nextIntent: {
 								actionType: "await-story-verify-initial",
 								summary: action.rationale,
@@ -1758,8 +1816,9 @@ export async function runStoryLead(
 						const envelope = (await storyVerify({
 							specPackRoot: input.specPackRoot,
 							storyId,
-							provider: action.provider,
-							orchestratorContext: action.orchestratorContext,
+							provider: action.inputs.provider,
+							orchestratorContext:
+								action.inputs.orchestratorContext ?? action.inputs.focus,
 							configPath: input.configPath,
 							env: input.env,
 							disableHeartbeats: true,
@@ -1776,7 +1835,7 @@ export async function runStoryLead(
 							summary: operationSummaryFromEnvelope("story-verify", envelope),
 							artifact: lastSemanticArtifactPath(artifactRefs),
 							data: {
-								actionType: action.type,
+								actionType: action.action,
 								command: "story-verify",
 								outcome: envelope.outcome,
 								status: envelope.status,
@@ -1785,6 +1844,7 @@ export async function runStoryLead(
 						await appendRunEvent(completionEvent);
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "awaiting_story_lead_action",
 							currentSummary: completionEvent.summary,
 							currentPhase: "story-lead-awaiting-action",
 							latestArtifacts: mergeArtifacts(
@@ -1807,165 +1867,13 @@ export async function runStoryLead(
 							currentChildOperation: null,
 							replayBoundary: null,
 						});
-						const terminalFailure = terminalFailureForChildOperation({
-							command: "story-verify",
-							envelope,
-						});
-						if (terminalFailure) {
-							terminalDecision = {
-								kind: "fail",
-								reason: terminalFailure.reason,
-								detail: terminalFailure.detail,
-								rationale: terminalFailure.rationale,
-							};
-							return completionEvent.summary;
-						}
-						if (envelope.status === "error") {
-							return await buildInterruptedResult({
-								reason: "interrupted",
-								eventType: "child-operation-error",
-								eventSummary:
-									"story-verify failed before the story-lead could safely continue.",
-								currentSummary:
-									"story-verify failed before the story-lead could safely continue.",
-								nextIntentSummary:
-									"Resume from the latest durable child artifact or restart the bounded child operation.",
-							});
-						}
-						return completionEvent.summary;
-					}
-					case "run-story-verify-followup": {
-						const continuation =
-							currentSnapshot.latestContinuationHandles[
-								action.verifierContinuationHandleRef
-							];
-						if (!continuation) {
-							return await buildInterruptedResult({
-								reason: "provider-output-invalid",
-								eventType: "provider-output-invalid",
-								eventSummary: `Story-lead referenced unknown verifier continuation handle '${action.verifierContinuationHandleRef}'.`,
-								currentSummary:
-									"Story-lead returned an invalid verifier continuation-handle reference.",
-								nextIntentSummary:
-									"Resume from the last valid child artifact after correcting the story-lead action response.",
-							});
-						}
-						let response: string | undefined = action.responseText;
-						if (!response && action.responseArtifactRef) {
-							const artifactPath = currentSnapshot.latestArtifacts.find(
-								(artifact) => artifact.path === action.responseArtifactRef,
-							)?.path;
-							if (!artifactPath) {
-								return await buildInterruptedResult({
-									reason: "provider-output-invalid",
-									eventType: "provider-output-invalid",
-									eventSummary: `Story-lead referenced unknown artifact '${action.responseArtifactRef}'.`,
-									currentSummary:
-										"Story-lead returned an invalid verifier response artifact reference.",
-									nextIntentSummary:
-										"Resume from the last valid child artifact after correcting the story-lead action response.",
-								});
-							}
-							response = await readTextFile(artifactPath);
-						}
-						await overwriteSnapshot({
-							status: "running",
-							currentSummary: `Running story-verify follow-up: ${action.rationale}`,
-							currentPhase: "run-story-verify-followup",
-							nextIntent: {
-								actionType: "await-story-verify-followup",
-								summary: action.rationale,
-								continuationHandleRef: action.verifierContinuationHandleRef,
-							},
-							currentChildOperation: {
-								command: "story-verify",
-								continuationHandleRef: action.verifierContinuationHandleRef,
-							},
-							replayBoundary: null,
-						});
-						const envelope = (await storyVerify({
-							specPackRoot: input.specPackRoot,
-							storyId,
-							provider: continuation.provider,
-							sessionId: continuation.sessionId,
-							response,
-							orchestratorContext: action.orchestratorContext,
-							configPath: input.configPath,
-							env: input.env,
-							disableHeartbeats: true,
-						})) as OperationEnvelope<StoryVerifierResult>;
-						const artifactRefs = semanticArtifactRefsFromEnvelope(
-							"story-verify",
-							envelope,
-						);
-						const updatedContinuation =
-							extractContinuationHandle(envelope) ?? continuation;
-						const completionEvent = buildEvent({
-							storyRunId: attemptPaths.storyRunId,
-							sequence: currentSnapshot.latestEventSequence + 1,
-							type: "child-operation-completed",
-							summary: operationSummaryFromEnvelope("story-verify", envelope),
-							artifact: lastSemanticArtifactPath(artifactRefs),
-							data: {
-								actionType: action.type,
-								command: "story-verify",
-								outcome: envelope.outcome,
-								status: envelope.status,
-							},
-						});
-						await appendRunEvent(completionEvent);
-						await overwriteSnapshot({
-							status: "running",
-							currentSummary: completionEvent.summary,
-							currentPhase: "story-lead-awaiting-action",
-							latestArtifacts: mergeArtifacts(
-								currentSnapshot.latestArtifacts,
-								artifactRefs,
-							),
-							latestContinuationHandles: {
-								...currentSnapshot.latestContinuationHandles,
-								storyVerifier: updatedContinuation,
-							},
-							nextIntent: {
-								actionType: "await-story-lead-action",
-								summary: action.rationale,
-								...(artifactRefs.at(-1)
-									? { artifactRef: artifactRefs.at(-1)?.path }
-									: {}),
-							},
-							currentChildOperation: null,
-							replayBoundary: null,
-						});
-						const terminalFailure = terminalFailureForChildOperation({
-							command: "story-verify",
-							envelope,
-						});
-						if (terminalFailure) {
-							terminalDecision = {
-								kind: "fail",
-								reason: terminalFailure.reason,
-								detail: terminalFailure.detail,
-								rationale: terminalFailure.rationale,
-							};
-							return completionEvent.summary;
-						}
-						if (envelope.status === "error") {
-							return await buildInterruptedResult({
-								reason: "interrupted",
-								eventType: "child-operation-error",
-								eventSummary:
-									"story-verify follow-up failed before the story-lead could safely continue.",
-								currentSummary:
-									"story-verify follow-up failed before the story-lead could safely continue.",
-								nextIntentSummary:
-									"Resume from the latest durable child artifact or restart the bounded child operation.",
-							});
-						}
+						maybeCrashAfterChildResult("story-verify");
 						return completionEvent.summary;
 					}
 					case "run-quick-fix": {
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "running_child_operation",
 							currentSummary: `Running quick-fix: ${action.rationale}`,
 							currentPhase: "run-quick-fix",
 							nextIntent: {
@@ -1979,8 +1887,8 @@ export async function runStoryLead(
 						});
 						const envelope = (await quickFix({
 							specPackRoot: input.specPackRoot,
-							request: action.request,
-							workingDirectory: action.workingDirectory,
+							request: action.inputs.remediationGoal,
+							workingDirectory: action.inputs.workingDirectory,
 							configPath: input.configPath,
 							env: input.env,
 							disableHeartbeats: true,
@@ -1996,7 +1904,7 @@ export async function runStoryLead(
 							summary: operationSummaryFromEnvelope("quick-fix", envelope),
 							artifact: lastSemanticArtifactPath(artifactRefs),
 							data: {
-								actionType: action.type,
+								actionType: action.action,
 								command: "quick-fix",
 								outcome: envelope.outcome,
 								status: envelope.status,
@@ -2005,6 +1913,7 @@ export async function runStoryLead(
 						await appendRunEvent(completionEvent);
 						await overwriteSnapshot({
 							status: "running",
+							lifecycleState: "awaiting_story_lead_action",
 							currentSummary: completionEvent.summary,
 							currentPhase: "story-lead-awaiting-action",
 							latestArtifacts: mergeArtifacts(
@@ -2021,46 +1930,44 @@ export async function runStoryLead(
 							currentChildOperation: null,
 							replayBoundary: null,
 						});
-						const terminalFailure = terminalFailureForChildOperation({
-							command: "quick-fix",
-							envelope,
-						});
-						if (terminalFailure) {
-							terminalDecision = {
-								kind: "fail",
-								reason: terminalFailure.reason,
-								detail: terminalFailure.detail,
-								rationale: terminalFailure.rationale,
-							};
-							return completionEvent.summary;
-						}
-						if (envelope.status === "error") {
-							return await buildInterruptedResult({
-								reason: "interrupted",
-								eventType: "child-operation-error",
-								eventSummary:
-									"quick-fix failed before the story-lead could safely continue.",
-								currentSummary:
-									"quick-fix failed before the story-lead could safely continue.",
-								nextIntentSummary:
-									"Resume from the latest durable child artifact or restart the bounded child operation.",
-							});
-						}
+						maybeCrashAfterChildResult("quick-fix");
 						return completionEvent.summary;
 					}
 					case "request-ruling":
 						terminalDecision = {
 							kind: "request-ruling",
-							request: action.request,
+							request: {
+								id:
+									action.inputs.id ??
+									`${attemptPaths.storyRunId}-ruling-${String(
+										currentSnapshot.latestEventSequence + 1,
+									).padStart(3, "0")}`,
+								decisionType: action.inputs.decisionType,
+								question: action.inputs.question,
+								defaultRecommendation: action.inputs.defaultRecommendation,
+								evidence: action.inputs.evidence,
+								allowedResponses: action.inputs.allowedResponses,
+							},
 							verification: action.verification,
 							riskAndDeviationReview: action.riskAndDeviationReview,
 							rationale: action.rationale,
 						};
-						return `Story-lead requested caller ruling ${action.request.id}.`;
+						return "Story-lead requested caller ruling.";
 					case "accept-story":
 						terminalDecision = {
 							kind: "accept",
-							acceptance: action.acceptance,
+							acceptance: {
+								acceptanceChecks:
+									action.inputs.acceptanceChecks ??
+									action.inputs.acceptanceCheckRefs.map((ref) => ({
+										name: ref,
+										status: "unknown" as const,
+										evidence: [ref],
+										reasoning: action.inputs.summary,
+									})),
+								recommendedImplLeadAction:
+									action.inputs.recommendedImplLeadAction,
+							},
 							verification: action.verification,
 							riskAndDeviationReview: action.riskAndDeviationReview,
 							rationale: action.rationale,
@@ -2069,38 +1976,81 @@ export async function runStoryLead(
 					case "block-story":
 						terminalDecision = {
 							kind: "block",
-							reason: action.reason,
-							detail: action.detail,
+							reason: action.inputs.reason,
+							detail: action.inputs.detail,
 							verification: action.verification,
 							riskAndDeviationReview: action.riskAndDeviationReview,
 							rationale: action.rationale,
 						};
-						return `Story-lead blocked the story: ${action.reason}`;
+						return `Story-lead blocked the story: ${action.inputs.reason}`;
+					case "fail-story":
+						terminalDecision = {
+							kind: "fail",
+							reason: action.inputs.reason,
+							detail: action.inputs.detail,
+							verification: action.verification,
+							riskAndDeviationReview: action.riskAndDeviationReview,
+							rationale: action.rationale,
+						};
+						return `Story-lead failed the story: ${action.inputs.reason}`;
 				}
 			};
 
 			for (let turn = 1; turn <= STORY_LEAD_MAX_TURNS; turn += 1) {
-				const resumeSessionId =
-					currentSnapshot.storyLeadSession?.provider === provider
-						? currentSnapshot.storyLeadSession.sessionId
-						: undefined;
-				const providerExecution = await adapter.execute({
-					prompt: await buildStoryLeadActionPrompt({
+				let prompt: string;
+				let plannerContext: StoryLeadPlannerContext;
+				try {
+					const promptInput = await buildStoryLeadActionPrompt({
 						specPackRoot: input.specPackRoot,
-						storyId,
-						storyTitle,
 						storyRunId: attemptPaths.storyRunId,
 						mode: input.mode,
 						currentSnapshot,
-						gateCommands,
-						reviewRequest: input.reviewRequest,
-						ruling: input.ruling,
-						lastTurnSummary,
-					}),
+						currentSnapshotPath: attemptPaths.currentSnapshotPath,
+						eventHistoryPath: attemptPaths.eventHistoryPath,
+						provider,
+						model: storyLeadAssignment.model,
+						runtimeSettings: {
+							storyGate: gateCommands?.story,
+							epicGate: gateCommands?.epic,
+							plannerTimeoutMs: timeouts?.story_implementor_ms ?? 7_200_000,
+							wholeRunTimeoutMs: timeouts?.story_implementor_ms ?? 7_200_000,
+							providerStartupTimeoutMs:
+								timeouts?.provider_startup_timeout_ms ?? 300_000,
+							providerActiveSilenceTimeoutMs:
+								timeouts?.story_implementor_silence_timeout_ms ?? 600_000,
+						},
+					});
+					prompt = promptInput.prompt;
+					plannerContext = promptInput.context;
+				} catch (error) {
+					if (isContextOverflowError(error)) {
+						const overflowEvent = buildEvent({
+							storyRunId: attemptPaths.storyRunId,
+							sequence: currentSnapshot.latestEventSequence + 1,
+							type: "story-lead-context-overflow",
+							summary:
+								"Story-lead planner context exceeded the provider limit and the run failed loudly.",
+							data: error,
+						});
+						await appendRunEvent(overflowEvent);
+						terminalDecision = {
+							kind: "fail",
+							reason: "Story-lead planner context exceeded the provider limit.",
+							detail: JSON.stringify(error),
+							rationale:
+								"Required durable planner context cannot be summarized or truncated to continue safely.",
+						};
+						break;
+					}
+
+					throw error;
+				}
+
+				const providerExecution = await adapter.execute({
+					prompt,
 					cwd: providerCwd,
 					model: storyLeadAssignment.model,
 					reasoningEffort: storyLeadAssignment.reasoning_effort,
-					...(resumeSessionId ? { resumeSessionId } : {}),
 					timeoutMs: timeouts?.story_implementor_ms ?? 7_200_000,
 					startupTimeoutMs: timeouts?.provider_startup_timeout_ms ?? 300_000,
 					silenceTimeoutMs:
@@ -2113,18 +2063,37 @@ export async function runStoryLead(
 					providerExecution.parseError ||
 					!providerExecution.parsedResult
 				) {
-					const failureSessionId =
-						providerExecution.sessionId ??
-						currentSnapshot.storyLeadSession?.sessionId ??
-						resumeSessionId;
-					const storyLeadSession = failureSessionId
-						? {
-								provider,
-								sessionId: failureSessionId,
-								model: storyLeadAssignment.model,
-								reasoningEffort: storyLeadAssignment.reasoning_effort,
-							}
-						: currentSnapshot.storyLeadSession;
+					if (providerFailureLooksLikeContextOverflow(providerExecution)) {
+						const overflowError = providerContextOverflowError({
+							storyId,
+							storyRunId: attemptPaths.storyRunId,
+							provider,
+							model: storyLeadAssignment.model,
+							context: plannerContext,
+						});
+						const overflowEvent = buildEvent({
+							storyRunId: attemptPaths.storyRunId,
+							sequence: currentSnapshot.latestEventSequence + 1,
+							type: "story-lead-context-overflow",
+							summary:
+								"Story-lead provider rejected the full planner context as exceeding input limits.",
+							data: {
+								...overflowError,
+								providerDiagnostic: providerFailureSummary(providerExecution),
+							},
+						});
+						await appendRunEvent(overflowEvent);
+						terminalDecision = {
+							kind: "fail",
+							reason:
+								"Story-lead provider rejected the full planner context as exceeding input limits.",
+							detail: JSON.stringify(overflowError),
+							rationale:
+								"Required durable planner context cannot be summarized or truncated after provider-side input-limit rejection.",
+						};
+						break;
+					}
+
 					return await buildInterruptedResult({
 						reason: providerFailureReason(providerExecution),
 						eventType:
@@ -2147,29 +2116,82 @@ export async function runStoryLead(
 						eventData: {
 							errorCode: providerExecution.errorCode,
 						},
-						storyLeadSession,
 					});
 				}
 
-				await recordStoryLeadSession(providerExecution.sessionId);
+				await recordPlannerTurnEvent(providerExecution.sessionId);
 				const action = providerExecution.parsedResult;
+				try {
+					assertStoryLeadActionAllowed({
+						lifecycleState: currentSnapshot.lifecycleState,
+						action: actionTypeForStateValidation(action),
+					});
+				} catch (error) {
+					const message =
+						error instanceof Error
+							? error.message
+							: "Story-lead returned an invalid action for the current lifecycle state.";
+					const invalidActionEvent = buildEvent({
+						storyRunId: attemptPaths.storyRunId,
+						sequence: currentSnapshot.latestEventSequence + 1,
+						type: "story-lead-action-invalid",
+						summary:
+							"Story-lead returned an action that is not allowed for the current lifecycle state.",
+						data: {
+							lifecycleState: currentSnapshot.lifecycleState,
+							actionType: action.action,
+							message,
+						},
+					});
+					await appendRunEvent(invalidActionEvent);
+					terminalDecision = {
+						kind: "fail",
+						reason:
+							"Story-lead returned an action that is not allowed for the current lifecycle state.",
+						detail: message,
+						rationale:
+							"Invalid state/action pairs must fail loudly instead of executing an out-of-bounds planner step.",
+					};
+					break;
+				}
 				const actionEvent = buildEvent({
 					storyRunId: attemptPaths.storyRunId,
 					sequence: currentSnapshot.latestEventSequence + 1,
 					type: "story-lead-action-selected",
-					summary: `Story-lead selected ${action.type}.`,
+					summary: `Story-lead selected ${action.action}.`,
 					data: {
-						actionType: action.type,
+						actionType: action.action,
 						turn,
+						...(action.selfNote ? { selfNote: action.selfNote } : {}),
 					},
 				});
 				await appendRunEvent(actionEvent);
+				if (action.selfNote) {
+					await appendRunEvent(
+						buildEvent({
+							storyRunId: attemptPaths.storyRunId,
+							sequence: currentSnapshot.latestEventSequence + 1,
+							type: "story-lead-self-note-recorded",
+							summary:
+								"Story-lead recorded a durable self-note for a future planner turn.",
+							data: {
+								note: action.selfNote,
+								actionSequence: actionEvent.sequence,
+								actionType: action.action,
+								turn,
+							},
+						}),
+					);
+				}
 				await overwriteSnapshot({
 					status: "running",
+					lifecycleState: terminalDecision
+						? "recording_result"
+						: "awaiting_story_lead_action",
 					currentSummary: actionEvent.summary,
 					currentPhase: "story-lead-action-selected",
 					nextIntent: {
-						actionType: action.type,
+						actionType: action.action,
 						summary: action.rationale,
 					},
 					replayBoundary: null,
@@ -2179,7 +2201,6 @@ export async function runStoryLead(
 				if (typeof childSummaryOrInterrupt !== "string") {
 					return childSummaryOrInterrupt;
 				}
-				lastTurnSummary = childSummaryOrInterrupt;
 
 				if (terminalDecision) {
 					break;
@@ -2195,7 +2216,6 @@ export async function runStoryLead(
 						"Story-lead exceeded the bounded turn limit and must be resumed from durable state.",
 					nextIntentSummary:
 						"Resume the attempt from the latest durable ledger state with a fresh bounded turn.",
-					storyLeadSession: currentSnapshot.storyLeadSession,
 				});
 			}
 		}
@@ -2481,6 +2501,7 @@ export async function runStoryLead(
 		await appendRunEvent(terminalEvent);
 		await overwriteSnapshot({
 			status: finalPackage.outcome,
+			lifecycleState: "terminal",
 			currentSummary:
 				resolvedTerminalDecision.kind === "accept"
 					? "Terminal story-lead package is ready for impl-lead review."

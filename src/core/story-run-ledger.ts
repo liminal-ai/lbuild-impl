@@ -176,6 +176,20 @@ async function maybeReadJson<T>(path: string): Promise<T | null> {
 	return JSON.parse(trimmed) as T;
 }
 
+function normalizeSnapshotForRead(
+	snapshot: StoryRunCurrentSnapshot,
+): StoryRunCurrentSnapshot {
+	if (!("storyLeadSession" in snapshot)) {
+		return snapshot;
+	}
+
+	const { storyLeadSession: _deprecatedStoryLeadSession, ...rest } =
+		snapshot as StoryRunCurrentSnapshot & {
+			storyLeadSession?: unknown;
+		};
+	return rest;
+}
+
 export function createStoryRunLedger(input: {
 	specPackRoot: string;
 	storyId: string;
@@ -225,8 +239,9 @@ export function createStoryRunLedger(input: {
 					continue;
 				}
 
-				const currentSnapshot =
-					storyRunCurrentSnapshotSchema.parse(currentSnapshotRaw);
+				const currentSnapshot = normalizeSnapshotForRead(
+					storyRunCurrentSnapshotSchema.parse(currentSnapshotRaw),
+				);
 				const attempt = extractAttemptFromCurrentPath(currentSnapshotPath);
 				if (!attempt) {
 					continue;
@@ -259,7 +274,9 @@ export function createStoryRunLedger(input: {
 
 		async readCurrentSnapshot(path: string) {
 			const payload = await maybeReadJson<StoryRunCurrentSnapshot>(path);
-			return storyRunCurrentSnapshotSchema.parse(payload);
+			return normalizeSnapshotForRead(
+				storyRunCurrentSnapshotSchema.parse(payload),
+			);
 		},
 
 		async readFinalPackage(path: string) {

@@ -198,6 +198,12 @@ function defaultOutcomeForStatus(
 	}
 }
 
+function lifecycleStateForStatus(
+	status: StoryRunStatus,
+): StoryRunCurrentSnapshot["lifecycleState"] {
+	return status === "running" ? "awaiting_story_lead_action" : "terminal";
+}
+
 export async function seedStoryRunAttempt(input: {
 	specPackRoot: string;
 	storyId: string;
@@ -218,6 +224,7 @@ export async function seedStoryRunAttempt(input: {
 		storyId: input.storyId,
 		attempt: attemptPaths.attempt,
 		status: input.status,
+		lifecycleState: lifecycleStateForStatus(input.status),
 		currentSummary: `Fixture status ${input.status}.`,
 		currentPhase:
 			input.status === "running" ? "story-orchestrate-run" : "terminal",

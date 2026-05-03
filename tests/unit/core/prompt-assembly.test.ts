@@ -155,7 +155,7 @@ describe("prompt assembly", () => {
 			"Story run id: 02-prompt-story-lead-001",
 		);
 		expect(assembled.prompt).toContain("## Action Protocol");
-		expect(assembled.prompt).toContain('"type":"run-story-implement"');
+		expect(assembled.prompt).toContain('"action":"run-implement"');
 		expect(assembled.prompt).toContain("## Acceptance Rubric");
 		expect(assembled.prompt).toContain("## Ruling Boundaries");
 	});

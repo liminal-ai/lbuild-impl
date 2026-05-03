@@ -286,15 +286,15 @@ function resultContractName(input: PromptAssemblyInput): string {
 
 function storyLeadActionContractSchema(): string {
 	return [
-		'{"type":"run-story-implement","rationale":"..."}',
-		'{"type":"run-story-continue","continuationHandleRef":"storyImplementor","request":"...","rationale":"..."}',
-		'{"type":"run-story-self-review","continuationHandleRef":"storyImplementor","passes":1,"rationale":"..."}',
-		'{"type":"run-story-verify-initial","provider":"codex","orchestratorContext":"...","rationale":"..."}',
-		'{"type":"run-story-verify-followup","verifierContinuationHandleRef":"storyVerifier","responseArtifactRef":"/abs/path/to/artifact.json","rationale":"..."}',
-		'{"type":"run-quick-fix","request":"...","workingDirectory":"optional","rationale":"..."}',
-		'{"type":"request-ruling","request":{"id":"...","decisionType":"...","question":"...","defaultRecommendation":"...","evidence":["..."],"allowedResponses":["..."]},"rationale":"..."}',
-		'{"type":"accept-story","acceptance":{"acceptanceChecks":[{"name":"...","status":"pass","evidence":["..."],"reasoning":"..."}],"recommendedImplLeadAction":"accept"},"verification":{"finalVerifierOutcome":"pass","findings":[{"id":"...","status":"fixed","evidence":["..."]}]},"riskAndDeviationReview":{"shimMockFallbackDecisions":[]},"rationale":"..."}',
-		'{"type":"block-story","reason":"...","detail":"optional","verification":{"finalVerifierOutcome":"block","findings":[{"id":"...","status":"unresolved","evidence":["..."]}]},"rationale":"..."}',
+		'{"action":"run-implement","rationale":"...","inputs":{"promptAddendum":"optional"}}',
+		'{"action":"run-continue","rationale":"...","inputs":{"continuationRef":"storyImplementor","promptAddendum":"..."}}',
+		'{"action":"run-self-review","rationale":"...","inputs":{"artifactRefs":["/abs/path/to/implementor.json"],"continuationRef":"storyImplementor","passes":1}}',
+		'{"action":"run-verify","rationale":"...","inputs":{"artifactRefs":["/abs/path/to/implementor.json"],"provider":"codex","orchestratorContext":"..."}}',
+		'{"action":"run-verify","rationale":"...","inputs":{"artifactRefs":["/abs/path/to/verifier.json"],"verifierContinuationRef":"storyVerifier","responseArtifactRef":"/abs/path/to/artifact.json"}}',
+		'{"action":"run-quick-fix","rationale":"...","inputs":{"remediationGoal":"...","workingDirectory":"optional"}}',
+		'{"action":"request-ruling","rationale":"...","inputs":{"id":"...","decisionType":"...","question":"...","defaultRecommendation":"...","evidence":["..."],"allowedResponses":["..."]}}',
+		'{"action":"accept-story","rationale":"...","inputs":{"summary":"...","acceptanceCheckRefs":["..."],"acceptanceChecks":[{"name":"...","status":"pass","evidence":["..."],"reasoning":"..."}],"recommendedImplLeadAction":"accept"},"verification":{"finalVerifierOutcome":"pass","findings":[{"id":"...","status":"fixed","evidence":["..."]}]},"riskAndDeviationReview":{"shimMockFallbackDecisions":[]}}',
+		'{"action":"block-story","rationale":"...","inputs":{"reason":"...","detail":"optional","evidence":["..."]},"verification":{"finalVerifierOutcome":"block","findings":[{"id":"...","status":"unresolved","evidence":["..."]}]}}',
 	].join("\n");
 }
 

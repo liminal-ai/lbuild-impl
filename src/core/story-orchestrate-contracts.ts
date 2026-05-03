@@ -5,6 +5,10 @@ import {
 	continuationHandleSchema,
 	providerIdSchema,
 } from "./result-contracts.js";
+import {
+	storyOrchestrateLifecycleStateSchema,
+	storyRunPublicStatusSchema,
+} from "./story-lead-state-machine.js";
 
 export const storyLeadOutcomeSchema = z.enum([
 	"accepted",
@@ -14,14 +18,7 @@ export const storyLeadOutcomeSchema = z.enum([
 	"interrupted",
 ]);
 
-export const storyRunStatusSchema = z.enum([
-	"running",
-	"accepted",
-	"needs-ruling",
-	"blocked",
-	"interrupted",
-	"failed",
-]);
+export const storyRunStatusSchema = storyRunPublicStatusSchema;
 
 export const storyLeadSessionRefSchema = z
 	.object({
@@ -124,6 +121,7 @@ export const storyRunCurrentSnapshotSchema = z
 		storyId: z.string().min(1),
 		attempt: z.number().int().positive(),
 		status: storyRunStatusSchema,
+		lifecycleState: storyOrchestrateLifecycleStateSchema,
 		currentSummary: z.string().min(1),
 		currentPhase: z.string().min(1),
 		currentChildOperation: currentChildOperationSchema.nullable(),
@@ -135,6 +133,74 @@ export const storyRunCurrentSnapshotSchema = z
 		nextIntent: storyRunNextIntentSchema.nullable(),
 		replayBoundary: replayBoundarySchema.nullable(),
 		updatedAt: z.string().min(1),
+	})
+	.strict();
+
+export const contextDocumentSchema = z
+	.object({
+		kind: z.string().min(1),
+		path: z.string().min(1).optional(),
+		content: z.string(),
+		bytes: z.number().int().nonnegative(),
+	})
+	.strict();
+
+export const storyLeadSelfNoteSchema = z
+	.object({
+		sequence: z.number().int().nonnegative(),
+		actionSequence: z.number().int().nonnegative(),
+		note: z.string().min(1),
+		createdAt: z.string().min(1),
+	})
+	.strict();
+
+export const storyLeadPlannerContextSchema = z
+	.object({
+		storyId: z.string().min(1),
+		storyRunId: z.string().min(1),
+		mode: z.enum(["run", "resume"]),
+		storyFile: contextDocumentSchema,
+		testPlan: contextDocumentSchema,
+		currentSnapshot: contextDocumentSchema,
+		eventHistory: contextDocumentSchema,
+		resultArtifacts: z.array(contextDocumentSchema),
+		callerInputArtifacts: z.array(contextDocumentSchema),
+		priorSelfNotes: z.array(storyLeadSelfNoteSchema),
+		seededSelfNoteInstruction: z.string().min(1).optional(),
+		stateRules: contextDocumentSchema,
+		runtimeSettings: z
+			.object({
+				storyGate: z.string().min(1).optional(),
+				epicGate: z.string().min(1).optional(),
+				plannerTimeoutMs: z.number().int().positive(),
+				wholeRunTimeoutMs: z.number().int().positive(),
+				providerStartupTimeoutMs: z.number().int().positive(),
+				providerActiveSilenceTimeoutMs: z.number().int().positive().optional(),
+			})
+			.strict(),
+	})
+	.strict();
+
+export const storyLeadContextOverflowErrorSchema = z
+	.object({
+		code: z.literal("STORY_LEAD_CONTEXT_OVERFLOW"),
+		storyId: z.string().min(1),
+		storyRunId: z.string().min(1),
+		provider: z.string().min(1),
+		model: z.string().min(1),
+		requiredContextBytes: z.number().int().positive(),
+		providerLimit: z.number().int().positive().optional(),
+		largestSources: z
+			.array(
+				z
+					.object({
+						kind: z.string().min(1),
+						path: z.string().min(1).optional(),
+						bytes: z.number().int().nonnegative(),
+					})
+					.strict(),
+			)
+			.min(1),
 	})
 	.strict();
 
@@ -304,94 +370,150 @@ export const storyLeadRiskAndDeviationReviewSchema = z
 	})
 	.strict();
 
-export const storyLeadActionSchema = z.discriminatedUnion("type", [
-	z
+const runImplementPlannerInputsSchema = z
+	.object({
+		promptAddendum: z.string().min(1).optional(),
+	})
+	.strict();
+
+const runContinuePlannerInputsSchema = z
+	.object({
+		continuationRef: z.string().min(1),
+		promptAddendum: z.string().min(1),
+	})
+	.strict();
+
+const runSelfReviewPlannerInputsSchema = z
+	.object({
+		artifactRefs: z.array(z.string().min(1)),
+		focus: z.string().min(1).optional(),
+		continuationRef: z.string().min(1).optional(),
+		passes: z.number().int().positive().optional(),
+	})
+	.strict();
+
+const runVerifyPlannerInputsSchema = z
+	.object({
+		artifactRefs: z.array(z.string().min(1)),
+		focus: z.string().min(1).optional(),
+		provider: providerIdSchema.optional(),
+		verifierContinuationRef: z.string().min(1).optional(),
+		responseArtifactRef: z.string().min(1).optional(),
+		responseText: z.string().min(1).optional(),
+		orchestratorContext: z.string().min(1).optional(),
+	})
+	.strict();
+
+const runQuickFixPlannerInputsSchema = z
+	.object({
+		findingRefs: z.array(z.string().min(1)).optional(),
+		remediationGoal: z.string().min(1),
+		workingDirectory: z.string().min(1).optional(),
+	})
+	.strict();
+
+const acceptStoryPlannerInputsSchema = z
+	.object({
+		summary: z.string().min(1),
+		acceptanceCheckRefs: z.array(z.string().min(1)),
+		acceptanceChecks: z.array(acceptanceCheckItemSchema).optional(),
+		recommendedImplLeadAction: z.enum([
+			"accept",
+			"reject",
+			"reopen",
+			"ask-ruling",
+		]),
+	})
+	.strict();
+
+const requestRulingPlannerInputsSchema = z
+	.object({
+		id: z.string().min(1).optional(),
+		decisionType: z.string().min(1),
+		question: z.string().min(1),
+		defaultRecommendation: z.string().min(1),
+		evidence: z.array(z.string().min(1)),
+		allowedResponses: z.array(z.string().min(1)).min(1),
+	})
+	.strict();
+
+const blockStoryPlannerInputsSchema = z
+	.object({
+		reason: z.string().min(1),
+		detail: z.string().min(1).optional(),
+		evidence: z.array(z.string().min(1)),
+	})
+	.strict();
+
+const failStoryPlannerInputsSchema = z
+	.object({
+		reason: z.string().min(1),
+		detail: z.string().min(1).optional(),
+		evidence: z.array(z.string().min(1)),
+	})
+	.strict();
+
+function storyLeadActionEnvelopeSchema<
+	TAction extends string,
+	TInputs extends z.ZodTypeAny,
+>(action: TAction, inputs: TInputs) {
+	return z
 		.object({
-			type: z.literal("run-story-implement"),
+			action: z.literal(action),
 			rationale: z.string().min(1),
-		})
-		.strict(),
-	z
-		.object({
-			type: z.literal("run-story-continue"),
-			continuationHandleRef: z.string().min(1),
-			request: z.string().min(1),
-			rationale: z.string().min(1),
-		})
-		.strict(),
-	z
-		.object({
-			type: z.literal("run-story-self-review"),
-			continuationHandleRef: z.string().min(1),
-			passes: z.number().int().positive(),
-			rationale: z.string().min(1),
-		})
-		.strict(),
-	z
-		.object({
-			type: z.literal("run-story-verify-initial"),
-			provider: providerIdSchema.optional(),
-			orchestratorContext: z.string().min(1).optional(),
-			rationale: z.string().min(1),
-		})
-		.strict(),
-	z
-		.object({
-			type: z.literal("run-story-verify-followup"),
-			verifierContinuationHandleRef: z.string().min(1),
-			responseArtifactRef: z.string().min(1).optional(),
-			responseText: z.string().min(1).optional(),
-			orchestratorContext: z.string().min(1).optional(),
-			rationale: z.string().min(1),
-		})
-		.strict()
-		.superRefine((value, ctx) => {
-			if (!value.responseArtifactRef && !value.responseText) {
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					message:
-						"Verifier follow-up actions require responseArtifactRef or responseText.",
-					path: ["responseArtifactRef"],
-				});
-			}
-		}),
-	z
-		.object({
-			type: z.literal("run-quick-fix"),
-			request: z.string().min(1),
-			workingDirectory: z.string().min(1).optional(),
-			rationale: z.string().min(1),
-		})
-		.strict(),
-	z
-		.object({
-			type: z.literal("request-ruling"),
-			request: callerRulingRequestSchema,
+			inputs,
 			verification: storyLeadVerificationSchema.optional(),
 			riskAndDeviationReview: storyLeadRiskAndDeviationReviewSchema.optional(),
-			rationale: z.string().min(1),
+			selfNote: z.string().min(1).optional(),
 		})
-		.strict(),
-	z
-		.object({
-			type: z.literal("accept-story"),
-			acceptance: storyLeadAcceptanceSummarySchema,
-			verification: storyLeadVerificationSchema.optional(),
-			riskAndDeviationReview: storyLeadRiskAndDeviationReviewSchema.optional(),
-			rationale: z.string().min(1),
-		})
-		.strict(),
-	z
-		.object({
-			type: z.literal("block-story"),
-			reason: z.string().min(1),
-			detail: z.string().min(1).optional(),
-			verification: storyLeadVerificationSchema.optional(),
-			riskAndDeviationReview: storyLeadRiskAndDeviationReviewSchema.optional(),
-			rationale: z.string().min(1),
-		})
-		.strict(),
-]);
+		.strict();
+}
+
+export const storyLeadActionSchema = z
+	.discriminatedUnion("action", [
+		storyLeadActionEnvelopeSchema(
+			"run-implement",
+			runImplementPlannerInputsSchema,
+		),
+		storyLeadActionEnvelopeSchema(
+			"run-continue",
+			runContinuePlannerInputsSchema,
+		),
+		storyLeadActionEnvelopeSchema(
+			"run-self-review",
+			runSelfReviewPlannerInputsSchema,
+		),
+		storyLeadActionEnvelopeSchema("run-verify", runVerifyPlannerInputsSchema),
+		storyLeadActionEnvelopeSchema(
+			"run-quick-fix",
+			runQuickFixPlannerInputsSchema,
+		),
+		storyLeadActionEnvelopeSchema(
+			"accept-story",
+			acceptStoryPlannerInputsSchema,
+		),
+		storyLeadActionEnvelopeSchema(
+			"request-ruling",
+			requestRulingPlannerInputsSchema,
+		),
+		storyLeadActionEnvelopeSchema("block-story", blockStoryPlannerInputsSchema),
+		storyLeadActionEnvelopeSchema("fail-story", failStoryPlannerInputsSchema),
+	])
+	.superRefine((value, ctx) => {
+		if (
+			value.action === "run-verify" &&
+			value.inputs.verifierContinuationRef &&
+			!value.inputs.responseArtifactRef &&
+			!value.inputs.responseText
+		) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message:
+					"Verifier follow-up actions require responseArtifactRef or responseText.",
+				path: ["inputs", "responseArtifactRef"],
+			});
+		}
+	});
 
 export const storyReceiptDraftSchema = z
 	.object({
@@ -759,6 +881,14 @@ export type CallerInputHistory = z.infer<typeof callerInputHistorySchema>;
 export type ReplayBoundary = z.infer<typeof replayBoundarySchema>;
 export type StoryRunCurrentSnapshot = z.infer<
 	typeof storyRunCurrentSnapshotSchema
+>;
+export type ContextDocument = z.infer<typeof contextDocumentSchema>;
+export type StoryLeadSelfNote = z.infer<typeof storyLeadSelfNoteSchema>;
+export type StoryLeadPlannerContext = z.infer<
+	typeof storyLeadPlannerContextSchema
+>;
+export type StoryLeadContextOverflowError = z.infer<
+	typeof storyLeadContextOverflowErrorSchema
 >;
 export type StoryRunEvent = z.infer<typeof storyRunEventSchema>;
 export type ImplLeadReviewItem = z.infer<typeof implLeadReviewItemSchema>;
