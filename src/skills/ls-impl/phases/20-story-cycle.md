@@ -97,6 +97,12 @@ Route on the terminal `status`:
 - **`failed`** — inspect the runtime or planner failure evidence, fix the root cause, then rerun or resume from a clean decision.
 - **`interrupted`** — resume from the last durable checkpoint instead of reconstructing progress from memory.
 
+Story completion is stricter than a clean terminal status. Before you mark the story accepted, keep all three proofs visible in the receipt package:
+
+- retained `story-verify` evidence shows `pass`
+- `npm run green-verify` passes as the story gate
+- `npm run verify-all` passes as the completion gate that includes integration
+
 ## 2. Poll status while the attempt is active
 
 ```bash
@@ -119,7 +125,9 @@ Use `spec-pack-root + story-id` as the stable recovery key when the story run id
 
 `story-orchestrate` does not accept the story for you. After an `accepted` terminal result:
 
+- confirm retained `story-verify` evidence is still `pass`
 - run the story gate command recorded in `team-impl-log.md`
+- run `npm run verify-all` before story completion, even if targeted slices or `green-verify` already passed during iteration
 - compare the cumulative test baseline to the prior accepted baseline
 - write the receipt in `team-impl-log.md`
 - record every unresolved finding disposition

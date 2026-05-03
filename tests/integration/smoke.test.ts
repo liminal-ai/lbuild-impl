@@ -2,23 +2,23 @@ import { describe, expect, test } from "vitest";
 
 import {
 	assertExecutableOnPath,
+	assertIntegrationPrerequisites,
+	assertProviderAuthAvailable,
 	assertPersistedEnvelope,
 	envelopeFailureSummary,
-	INTEGRATION_ENABLED,
 	runSmoke,
 	sdkEnvelopeSchemas,
-	skipIfProviderAuthUnavailable,
 } from "./helpers";
 
-const describeIntegration = INTEGRATION_ENABLED ? describe : describe.skip;
+assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex", "copilot"] as const;
 
-describeIntegration("real-provider smoke coverage", () => {
+describe("real-provider smoke coverage", () => {
 	for (const provider of providers) {
-		test(`TC-5.1a: ${provider} package operation returns a valid envelope and artifact`, async (context) => {
+		test(`TC-5.1a/TC-5.4b/TC-5.4c: ${provider} package operation returns a valid envelope and artifact without auth skips or fallback paths`, async () => {
 			await assertExecutableOnPath(provider);
 			const { envelope } = await runSmoke(provider);
-			skipIfProviderAuthUnavailable(context, provider, envelope);
+			assertProviderAuthAvailable(provider, envelope);
 
 			expect(envelope.command).toBe("story-implement");
 			expect(envelope.status, envelopeFailureSummary(envelope)).toBe("ok");

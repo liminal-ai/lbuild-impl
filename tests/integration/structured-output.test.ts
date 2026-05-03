@@ -2,24 +2,24 @@ import { describe, expect, test } from "vitest";
 
 import {
 	assertExecutableOnPath,
+	assertIntegrationPrerequisites,
+	assertProviderAuthAvailable,
 	assertPersistedEnvelope,
 	envelopeFailureSummary,
-	INTEGRATION_ENABLED,
 	runInspectStructuredOperation,
 	runStructuredOutput,
 	sdkEnvelopeSchemas,
-	skipIfProviderAuthUnavailable,
 } from "./helpers";
 
-const describeIntegration = INTEGRATION_ENABLED ? describe : describe.skip;
+assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex", "copilot"] as const;
 
-describeIntegration("real-provider structured-output coverage", () => {
+describe("real-provider structured-output coverage", () => {
 	for (const provider of providers) {
-		test(`TC-5.1c: ${provider} package operation forwards parsed structured output into the SDK envelope`, async (context) => {
+		test(`TC-5.1c/TC-5.4c: ${provider} package operation forwards parsed structured output into the SDK envelope without fallback shims`, async () => {
 			await assertExecutableOnPath(provider);
 			const { envelope } = await runStructuredOutput(provider);
-			skipIfProviderAuthUnavailable(context, provider, envelope);
+			assertProviderAuthAvailable(provider, envelope);
 
 			expect(envelope.status, envelopeFailureSummary(envelope)).toBe("ok");
 			const parsedEnvelope = sdkEnvelopeSchemas.implementor.parse(envelope);

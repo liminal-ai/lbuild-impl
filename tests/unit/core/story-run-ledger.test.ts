@@ -110,6 +110,11 @@ describe("story-run ledger", () => {
 					reviewRequests: [],
 					rulings: [],
 				},
+				runtimeIdentity: {
+					version: "0.3.0",
+					invocationSource: "local-source",
+					entryPath: "/tmp/lbuild-impl/src/bin/lbuild-impl.ts",
+				},
 				replayBoundary: null,
 				logHandoff: {
 					recommendedState: "BETWEEN_STORIES",

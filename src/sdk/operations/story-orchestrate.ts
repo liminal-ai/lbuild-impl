@@ -6,6 +6,7 @@ import {
 } from "../../core/story-orchestrate-contracts.js";
 import { discoverStoryRunState } from "../../core/story-run-discovery.js";
 import { createStoryRunLedger } from "../../core/story-run-ledger.js";
+import { createRuntimeIdentity } from "../../core/runtime-identity.js";
 import {
 	type StoryOrchestrateResumeInput,
 	type StoryOrchestrateResumeResult,
@@ -639,6 +640,7 @@ export async function storyOrchestrateStatus(
 						latestEventSequence: attempt.currentSnapshot.latestEventSequence,
 						latestEvent,
 						latestChildOperation,
+						runtimeIdentity: createRuntimeIdentity(),
 						elapsedTime: formatElapsedTime(
 							startedAtForElapsed,
 							attempt.currentSnapshot.updatedAt,

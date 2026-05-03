@@ -36,6 +36,11 @@ function renderStatusSummary(
 						`latest-child-operation: ${envelope.result.latestChildOperation.command}`,
 					]
 				: []),
+			`runtime-version: ${envelope.result.runtimeIdentity.version}`,
+			`invocation-source: ${envelope.result.runtimeIdentity.invocationSource}`,
+			...(envelope.result.runtimeIdentity.entryPath
+				? [`entry-path: ${envelope.result.runtimeIdentity.entryPath}`]
+				: []),
 			`status-artifact: ${envelope.result.statusArtifactPath}`,
 			`elapsed: ${envelope.result.elapsedTime}`,
 			...(envelope.result.finalPackagePath

@@ -52,6 +52,11 @@ describe("story-orchestrate status CLI", () => {
 				latestChildOperation: {
 					command: string;
 				} | null;
+				runtimeIdentity: {
+					version: string;
+					invocationSource: string;
+					entryPath?: string;
+				};
 				statusArtifactPath: string;
 				elapsedTime: string;
 			};
@@ -72,12 +77,43 @@ describe("story-orchestrate status CLI", () => {
 				latestChildOperation: expect.objectContaining({
 					command: "story-implement",
 				}),
+				runtimeIdentity: expect.objectContaining({
+					version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+					invocationSource: "local-source",
+					entryPath: expect.any(String),
+				}),
 				statusArtifactPath: expect.stringContaining(
 					"story-lead/progress/001-story-lead.status.json",
 				),
 				elapsedTime: "5m 0s",
 			}),
 		);
+	});
+
+	test("TC-5.7a/TC-5.7b prints runtime identity in human status output", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-orchestrate-status-human-identity",
+		);
+		await seedStoryRunAttempt({
+			specPackRoot,
+			storyId,
+			status: "running",
+		});
+
+		const run = await runSourceCli([
+			"story-orchestrate",
+			"status",
+			"--spec-pack-root",
+			specPackRoot,
+			"--story-id",
+			storyId,
+		]);
+
+		expect(run.exitCode).toBe(0);
+		expect(run.stderr).toBe("");
+		expect(run.stdout).toContain("runtime-version:");
+		expect(run.stdout).toContain("invocation-source: local-source");
+		expect(run.stdout).toContain("entry-path:");
 	});
 
 	test("TC-2.5b reports ambiguous attempts instead of guessing", async () => {

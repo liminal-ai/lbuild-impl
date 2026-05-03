@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { createStoryRunLedger } from "../../src/core/story-run-ledger.js";
+import { packageVersion } from "../../src/package-metadata.js";
 import type {
 	ArtifactRef,
 	CurrentChildOperation,
@@ -155,6 +156,11 @@ function buildFinalPackage(input: {
 		callerInputHistory: {
 			reviewRequests: [],
 			rulings: [],
+		},
+		runtimeIdentity: {
+			version: packageVersion,
+			invocationSource: "local-source",
+			entryPath: "/tmp/spec-pack/src/bin/lbuild-impl.ts",
 		},
 		replayBoundary: interruptedReplayBoundary,
 		logHandoff: {

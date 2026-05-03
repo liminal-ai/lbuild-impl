@@ -2,8 +2,6 @@ import { access } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
 
-import type { TestContext } from "vitest";
-
 import { cliResultEnvelopeSchema } from "../../src/core/result-contracts";
 import {
 	implementorResultSchema,
@@ -24,10 +22,6 @@ import {
 	writeRunConfig,
 	writeTextFile,
 } from "../support/test-helpers";
-
-export const INTEGRATION_ENABLED = process.env.LSPEC_INTEGRATION === "1";
-export const INTEGRATION_AUTH_SKIP_MODE =
-	process.env.LSPEC_INTEGRATION_SKIP_AUTH_FAILURES === "1";
 
 const DEFAULT_OPERATION_TIMEOUT_MS = 180_000;
 const DEFAULT_OPERATION_SILENCE_TIMEOUT_MS = 120_000;
@@ -167,7 +161,15 @@ export async function assertExecutableOnPath(
 	);
 }
 
-function isSkippableProviderBlock(envelope: {
+export function assertIntegrationPrerequisites(): void {
+	if (process.env.LSPEC_INTEGRATION !== "1") {
+		throw new Error(
+			"Integration tests require LSPEC_INTEGRATION=1. The integration suite no longer skips internally when invoked without the prerequisite flag.",
+		);
+	}
+}
+
+function isProviderAuthFailure(envelope: {
 	status: string;
 	errors: Array<{ code: string; detail?: string; message: string }>;
 }) {
@@ -182,22 +184,16 @@ function isSkippableProviderBlock(envelope: {
 	);
 }
 
-export function skipIfProviderAuthUnavailable(
-	context: TestContext,
+export function assertProviderAuthAvailable(
 	provider: RealProviderName,
 	envelope: {
 		status: string;
 		errors: Array<{ code: string; detail?: string; message: string }>;
 	},
 ) {
-	if (isSkippableProviderBlock(envelope)) {
-		if (!INTEGRATION_AUTH_SKIP_MODE) {
-			throw new Error(
-				`${provider} real-provider integration blocked by missing or failed authentication. Set LSPEC_INTEGRATION_SKIP_AUTH_FAILURES=1 only for local/dev skip mode.`,
-			);
-		}
-		context.skip(
-			`${provider} real-provider integration skipped because the binary is present but authentication is unavailable: ${envelope.errors[0]?.message ?? "provider unavailable"}`,
+	if (isProviderAuthFailure(envelope)) {
+		throw new Error(
+			`${provider} real-provider integration requires authenticated provider access. The integration suite now fails loudly instead of skipping when authentication is unavailable.`,
 		);
 	}
 }

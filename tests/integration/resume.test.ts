@@ -2,23 +2,23 @@ import { describe, expect, test } from "vitest";
 
 import {
 	assertExecutableOnPath,
+	assertIntegrationPrerequisites,
+	assertProviderAuthAvailable,
 	assertPersistedEnvelope,
 	envelopeFailureSummary,
-	INTEGRATION_ENABLED,
 	runResume,
 	sdkEnvelopeSchemas,
-	skipIfProviderAuthUnavailable,
 } from "./helpers";
 
-const describeIntegration = INTEGRATION_ENABLED ? describe : describe.skip;
+assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex", "copilot"] as const;
 
-describeIntegration("real-provider resume coverage", () => {
+describe("real-provider resume coverage", () => {
 	for (const provider of providers) {
-		test(`TC-5.1b: ${provider} package continuation reuses the session handle`, async (context) => {
+		test(`TC-5.1b/TC-5.4b: ${provider} package continuation reuses the session handle without auth skip behavior`, async () => {
 			await assertExecutableOnPath(provider);
 			const { initial, resumed } = await runResume(provider);
-			skipIfProviderAuthUnavailable(context, provider, initial);
+			assertProviderAuthAvailable(provider, initial);
 
 			expect(initial.status, envelopeFailureSummary(initial)).toBe("ok");
 			expect(initial.result?.continuation.sessionId).toEqual(
@@ -30,7 +30,7 @@ describeIntegration("real-provider resume coverage", () => {
 					"Expected resume operation to execute after initial run.",
 				);
 			}
-			skipIfProviderAuthUnavailable(context, provider, resumed);
+			assertProviderAuthAvailable(provider, resumed);
 			expect(resumed.command).toBe("story-continue");
 			expect(resumed.status, envelopeFailureSummary(resumed)).toBe("ok");
 			expect(resumed.result?.continuation.sessionId).toBe(

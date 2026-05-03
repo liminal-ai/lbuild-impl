@@ -81,7 +81,16 @@ describe("ls-impl story cycle skill docs", () => {
 		);
 		expect(chunk.stdout).toContain("Route on the terminal `status`:");
 		expect(chunk.stdout).toContain(
+			"Story completion is stricter than a clean terminal status.",
+		);
+		expect(chunk.stdout).toContain(
+			"`npm run verify-all` passes as the completion gate that includes integration",
+		);
+		expect(chunk.stdout).toContain(
 			"review the final package, run the final story gate yourself, complete the receipt, make the story commit, and only then accept the story.",
+		);
+		expect(chunk.stdout).toContain(
+			"run `npm run verify-all` before story completion",
 		);
 		expect(chunk.stdout).toContain(
 			"pause and supply the caller decision the story-lead asked for.",

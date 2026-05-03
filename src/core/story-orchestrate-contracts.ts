@@ -9,6 +9,7 @@ import {
 	storyOrchestrateLifecycleStateSchema,
 	storyRunPublicStatusSchema,
 } from "./story-lead-state-machine.js";
+import { runtimeIdentitySchema } from "./runtime-identity.js";
 
 export const storyLeadOutcomeSchema = z.enum([
 	"accepted",
@@ -612,6 +613,7 @@ export const storyLeadFinalPackageSchema = z
 		diffReview: diffReviewSchema,
 		acceptanceChecks: z.array(acceptanceCheckItemSchema),
 		callerInputHistory: callerInputHistorySchema,
+		runtimeIdentity: runtimeIdentitySchema,
 		replayBoundary: replayBoundarySchema.nullable(),
 		logHandoff: logHandoffSchema,
 		cleanupHandoff: cleanupHandoffSchema,
@@ -863,6 +865,7 @@ export const storyOrchestrateStatusResultSchema = z.discriminatedUnion("case", [
 			latestEventSequence: z.number().int().nonnegative(),
 			latestEvent: storyRunEventSchema.nullable(),
 			latestChildOperation: currentChildOperationSchema.nullable(),
+			runtimeIdentity: runtimeIdentitySchema,
 			elapsedTime: z.string().min(1),
 			terminalResult: storyLeadOutcomeSchema.optional(),
 			finalPackagePath: z.string().min(1).optional(),

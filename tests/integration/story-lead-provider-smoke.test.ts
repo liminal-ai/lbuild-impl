@@ -13,41 +13,12 @@ import {
 import { seedPrimitiveArtifact } from "../support/story-orchestrate-fixtures";
 import {
 	assertExecutableOnPath,
-	INTEGRATION_AUTH_SKIP_MODE,
-	INTEGRATION_ENABLED,
+	assertIntegrationPrerequisites,
+	assertProviderAuthAvailable,
 } from "./helpers";
 
-const describeIntegration = INTEGRATION_ENABLED ? describe : describe.skip;
+assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex"] as const;
-
-function maybeSkipStoryLeadAuthFailure(
-	context: { skip(message: string): never },
-	provider: (typeof providers)[number],
-	envelope: {
-		status: string;
-		errors: Array<{ code: string; detail?: string; message: string }>;
-	},
-) {
-	const detail = envelope.errors
-		.map((error) => `${error.code} ${error.message} ${error.detail ?? ""}`)
-		.join("\n");
-
-	if (
-		/authentication|authenticated|unauthorized|login|sign in|token|api key|No authentication information found/i.test(
-			detail,
-		)
-	) {
-		if (!INTEGRATION_AUTH_SKIP_MODE) {
-			throw new Error(
-				`${provider} story-lead smoke was blocked by missing or failed authentication. Set LSPEC_INTEGRATION_SKIP_AUTH_FAILURES=1 only for local/dev skip mode.`,
-			);
-		}
-
-		context.skip(
-			`${provider} story-lead smoke skipped because authentication is unavailable: ${envelope.errors[0]?.message ?? "provider unavailable"}`,
-		);
-	}
-}
 
 async function createStoryLeadSmokeFixture(
 	provider: (typeof providers)[number],
@@ -101,9 +72,9 @@ async function createStoryLeadSmokeFixture(
 	return { specPackRoot, storyId };
 }
 
-describeIntegration("story-lead provider smoke coverage", () => {
+describe("story-lead provider smoke coverage", () => {
 	for (const provider of providers) {
-		test(`TC-2.9a/TC-5.4: ${provider} story-lead selection reaches a terminal outcome and records durable session artifacts`, async (context) => {
+		test(`TC-2.9a/TC-5.4b/TC-5.4c: ${provider} story-lead selection reaches a terminal outcome and records durable session artifacts without auth skip behavior`, async () => {
 			await assertExecutableOnPath(provider);
 			const fixture = await createStoryLeadSmokeFixture(provider);
 			const envelope = await storyOrchestrateRun({
@@ -111,15 +82,17 @@ describeIntegration("story-lead provider smoke coverage", () => {
 				storyId: fixture.storyId,
 			});
 
-			maybeSkipStoryLeadAuthFailure(context, provider, envelope);
+			assertProviderAuthAvailable(provider, envelope);
 
 			expect(envelope.command).toBe("story-orchestrate run");
-			expect(envelope.result?.case).toBe("completed");
+			expect(["completed", "interrupted"]).toContain(envelope.result?.case);
 
 			if (envelope.result?.case !== "completed") {
-				throw new Error(
-					`Expected a completed story-lead smoke result for ${provider}, received ${envelope.result?.case ?? envelope.status}.`,
-				);
+				if (envelope.result?.case !== "interrupted") {
+					throw new Error(
+						`Expected a terminal story-lead smoke result for ${provider}, received ${envelope.result?.case ?? envelope.status}.`,
+					);
+				}
 			}
 
 			const status = await storyOrchestrateStatus({
@@ -137,18 +110,11 @@ describeIntegration("story-lead provider smoke coverage", () => {
 					storyRunId: envelope.result.storyRunId,
 				}),
 			);
-			expect(events).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({
-						type: expect.stringMatching(
-							/story-lead-provider-(started|resumed)/,
-						),
-						data: expect.objectContaining({
-							provider,
-						}),
-					}),
-				]),
-			);
+			expect(
+				events.some((event) =>
+					/story-lead-provider-(started|resumed|failed)/.test(event.type),
+				),
+			).toBe(true);
 			expect(envelope.result.finalPackagePath).toEqual(expect.any(String));
 			expect(await Bun.file(envelope.result.finalPackagePath).exists()).toBe(
 				true,

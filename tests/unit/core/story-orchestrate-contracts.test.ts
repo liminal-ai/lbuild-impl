@@ -91,6 +91,11 @@ function createFinalPackage() {
 			reviewRequests: [],
 			rulings: [],
 		},
+		runtimeIdentity: {
+			version: "0.3.0",
+			invocationSource: "local-source" as const,
+			entryPath: "/tmp/lbuild-impl/src/bin/lbuild-impl.ts",
+		},
 		replayBoundary: null,
 		logHandoff: {
 			recommendedState: "NEEDS_RULING",
@@ -331,6 +336,11 @@ describe("story-orchestrate contracts", () => {
 					"/tmp/spec-pack/artifacts/00-foundation/story-orchestrate/final-package.json",
 			},
 			latestChildOperation: null,
+			runtimeIdentity: {
+				version: "0.3.0",
+				invocationSource: "local-source",
+				entryPath: "/tmp/lbuild-impl/src/bin/lbuild-impl.ts",
+			},
 			elapsedTime: "0s",
 			terminalResult: "needs-ruling",
 			finalPackagePath:

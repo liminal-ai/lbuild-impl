@@ -2,6 +2,7 @@ import { buildCleanupHandoff } from "./cleanup-handoff.js";
 import { buildLogHandoff } from "./log-handoff.js";
 import type { ContinuationHandle } from "./result-contracts.js";
 import { buildAuthorityBoundaryRulingRequest } from "./review-ruling.js";
+import { createRuntimeIdentity } from "./runtime-identity.js";
 import type {
 	AcceptanceCheckItem,
 	ArtifactRef,
@@ -510,6 +511,7 @@ export function buildStoryLeadFinalPackage(
 			reviewRequests: [],
 			rulings: [],
 		},
+		runtimeIdentity: createRuntimeIdentity(),
 		replayBoundary: input.replayBoundary ?? null,
 		logHandoff: buildLogHandoff({
 			outcome,

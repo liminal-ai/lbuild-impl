@@ -81,6 +81,9 @@ describe("story final package", () => {
 		expect(finalPackage.logHandoff.commitReadiness.state).toBe(
 			"ready-for-impl-lead-commit",
 		);
+		expect(finalPackage.runtimeIdentity.version).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(finalPackage.runtimeIdentity.invocationSource).toBe("local-source");
+		expect(finalPackage.runtimeIdentity.entryPath).toEqual(expect.any(String));
 	});
 
 	test("TC-3.2a, TC-3.2b, TC-3.2c, TC-3.2d, TC-3.3c, and TC-3.7c prevent accepted outcome when acceptance checks fail", () => {

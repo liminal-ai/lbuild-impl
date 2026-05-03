@@ -46,6 +46,11 @@ describe("story-orchestrate status sdk operation", () => {
 				latestChildOperation: expect.objectContaining({
 					command: "story-implement",
 				}),
+				runtimeIdentity: expect.objectContaining({
+					version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+					invocationSource: "local-source",
+					entryPath: expect.any(String),
+				}),
 				statusArtifactPath: expect.stringContaining(
 					"story-lead/progress/001-story-lead.status.json",
 				),
