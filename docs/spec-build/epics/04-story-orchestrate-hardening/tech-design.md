@@ -802,6 +802,9 @@ Exit gates: targeted Windows/provider/version tests; `npm run green-verify`; `np
 | Q1 | Real-provider evidence may suggest tuning provider-specific stall thresholds after implementation | Implementation lead | None | Initial defaults are defined in Flow 5; tune only if tests or real-provider evidence show they are wrong |
 | Q2 | Whether Codex resume can receive schema enforcement in the installed CLI version | Implementation lead | Chunk 8 | If unsupported, preserve parse validation and fail clearly on drift |
 | Q3 | Which Windows smoke steps Lee can run in Parallels at closeout | Maintainer | Closeout only | Test plan includes checklist; not a coding blocker |
+| Q4 | Which exact enum names and action labels should anchor the initial story-orchestrate state machine while keeping logs and errors caller-readable | Implementation lead | Chunk 0 | Use `lifecycleState` plus the explicit action names from the Story Lead State interface in this design |
+| Q5 | What exact error code and diagnostic fields should represent full-context overflow without summarizing required context | Implementation lead | Chunk 2 | Use `STORY_LEAD_CONTEXT_OVERFLOW` with story/provider/model, total bytes, optional provider limit, and largest source diagnostics |
+| Q6 | What is the safest Windows executable lookup strategy for provider CLIs without regressing POSIX behavior | Implementation lead | Chunk 8 | Resolve provider executables through normal POSIX lookup plus Windows PATHEXT shim discovery for `.cmd` and `.bat` launchers |
 
 ## Deferred Items
 

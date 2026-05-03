@@ -4,6 +4,47 @@ Stage 3 runs once per story in order. For each story you launch implementation, 
 
 If you use `story-orchestrate`, treat it as a story-lead helper for one story rather than as outer acceptance authority. Story-lead can own the internal story loop and hand back a final package, but impl-lead still reviews that package, finishes the receipt, makes the story commit, and decides whether the story is actually accepted.
 
+## Story-orchestrate lifecycle
+
+`story-orchestrate` keeps two vocabularies visible at the same time:
+
+- `status` stays caller-facing: `running`, `accepted`, `needs-ruling`, `blocked`, `failed`, `interrupted`
+- `lifecycleState` explains where the current attempt sits inside the story-lead loop: `initialized`, `awaiting_story_lead_action`, `running_child_operation`, `recording_result`, `terminal`
+
+```mermaid
+stateDiagram-v2
+    [*] --> initialized
+    initialized --> awaiting_story_lead_action
+    awaiting_story_lead_action --> running_child_operation: implement/continue/self-review/verify/quick-fix
+    awaiting_story_lead_action --> recording_result: accept/block/fail/request-ruling
+    awaiting_story_lead_action --> failed: planner invalid or context overflow
+    running_child_operation --> recording_result: child completed
+    running_child_operation --> interrupted: caller/runtime interruption
+    running_child_operation --> failed: unrecoverable runtime error
+    recording_result --> awaiting_story_lead_action: non-terminal result recorded
+    recording_result --> terminal: accepted
+    recording_result --> terminal: needs-ruling
+    recording_result --> terminal: blocked
+    recording_result --> terminal: failed
+    recording_result --> terminal: interrupted
+```
+
+Caller implications:
+
+- `initialized` means setup exists but no planner turn has safely started yet.
+- `awaiting_story_lead_action` means the next fresh planner turn should return exactly one bounded action.
+- `running_child_operation` means the runtime is executing one bounded step, so keep polling durable artifacts instead of rerouting blindly.
+- `recording_result` means the runtime is writing evidence and ledger updates before it claims the next state.
+- `terminal` means read the public `status` plus the final package to decide the impl-lead follow-up.
+
+Terminal `status` meanings:
+
+- `accepted` still requires impl-lead review, receipt completion, gates, and the story commit.
+- `needs-ruling` means the story hit an authority boundary and the caller must decide.
+- `blocked` means a named blocker prevented safe progress.
+- `failed` means the attempt ended in an unrecoverable runtime or planner failure.
+- `interrupted` means resume from the last durable checkpoint rather than guessing from memory.
+
 Update `State` and `Current Phase` in `team-impl-log.md` as you move through the steps. Recovery uses these values to resume from the right place.
 
 | Step | State | Current Phase |
