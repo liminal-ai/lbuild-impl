@@ -19,6 +19,7 @@ import {
 	createTempDir,
 	readJsonLines,
 	writeFakeProviderExecutable,
+	writeTextFile,
 } from "../../support/test-helpers";
 
 function providerWrapper(sessionId: string, payload: unknown): string {
@@ -693,13 +694,59 @@ describe("story-lead loop", () => {
 	test("TC-2.6b, TC-3.5d, TC-3.9a, and TC-3.9b preserve review history across a reopened accepted attempt", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-reopen",
+			{
+				includeStoryLead: true,
+			},
 		);
+		const providerBinDir = await createTempDir("story-lead-loop-reopen-bin");
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-reopen-001", {
+						action: "block-story",
+						rationale:
+							"Keep the reopened attempt blocked until the impl-lead review request is addressed.",
+						inputs: {
+							reason: "Please reopen and address the missing package notes.",
+							evidence: ["review-001"],
+						},
+					}),
+				},
+			],
+		});
 		const acceptedAttempt = await seedStoryRunAttempt({
 			specPackRoot,
 			storyId,
 			status: "accepted",
 			finalPackageOutcome: "accepted",
 		});
+		for (const artifact of [
+			{
+				kind: "implementor-result",
+				path: `/tmp/spec-pack/artifacts/${storyId}/001-implementor.json`,
+			},
+			{
+				kind: "verifier-result",
+				path: `/tmp/spec-pack/artifacts/${storyId}/002-verifier.json`,
+			},
+		]) {
+			await writeTextFile(
+				artifact.path,
+				`${JSON.stringify(
+					{
+						command:
+							artifact.kind === "verifier-result"
+								? "story-verify"
+								: "story-implement",
+						ok: true,
+					},
+					null,
+					2,
+				)}\n`,
+			);
+		}
 
 		const resumeEnvelope = await storyOrchestrateResume({
 			specPackRoot,
@@ -717,6 +764,10 @@ describe("story-lead loop", () => {
 						requiredResponse: "Add the missing notes to the handoff package.",
 					},
 				],
+			},
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
 			},
 		});
 
@@ -802,9 +853,34 @@ describe("story-lead loop", () => {
 	test("TC-3.5a and TC-3.5c classify primitive implementor and verifier artifacts into the correct final-package evidence buckets", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-evidence-split",
+			{
+				includeStoryLead: true,
+			},
 		);
 		const implementorPath = `${specPackRoot}/artifacts/${storyId}/001-implementor.json`;
 		const verifierPath = `${specPackRoot}/artifacts/${storyId}/002-verifier.json`;
+		const providerBinDir = await createTempDir(
+			"story-lead-loop-evidence-split-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-evidence-split-001", {
+						action: "accept-story",
+						rationale:
+							"The primitive implementor and verifier artifacts are sufficient for scoped acceptance packaging.",
+						inputs: {
+							summary:
+								"The primitive implementor and verifier artifacts are sufficient for scoped acceptance packaging.",
+							acceptanceCheckRefs: ["primitive-evidence-split"],
+							recommendedImplLeadAction: "accept" as const,
+						},
+					}),
+				},
+			],
+		});
 		await seedPrimitiveArtifact({
 			specPackRoot,
 			storyId,
@@ -834,6 +910,10 @@ describe("story-lead loop", () => {
 			ledger,
 			mode: "run",
 			startedFromPrimitiveArtifacts: [implementorPath, verifierPath],
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
 		});
 
 		if (runtime.case !== "completed" || !runtime.finalPackage) {
@@ -863,9 +943,34 @@ describe("story-lead loop", () => {
 	test("derives a revise verifier outcome from recorded verifier evidence instead of artifact presence", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-verifier-revise",
+			{
+				includeStoryLead: true,
+			},
 		);
 		const implementorPath = `${specPackRoot}/artifacts/${storyId}/001-implementor.json`;
 		const verifierPath = `${specPackRoot}/artifacts/${storyId}/002-verifier.json`;
+		const providerBinDir = await createTempDir(
+			"story-lead-loop-verifier-revise-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-verifier-revise-001", {
+						action: "accept-story",
+						rationale:
+							"Finalize from the recorded primitive verifier evidence so the runtime can derive the latest verifier outcome.",
+						inputs: {
+							summary:
+								"Finalize from the recorded primitive verifier evidence so the runtime can derive the latest verifier outcome.",
+							acceptanceCheckRefs: ["primitive-verifier-revise"],
+							recommendedImplLeadAction: "reopen" as const,
+						},
+					}),
+				},
+			],
+		});
 		await seedPrimitiveArtifact({
 			specPackRoot,
 			storyId,
@@ -894,6 +999,10 @@ describe("story-lead loop", () => {
 			}),
 			mode: "run",
 			startedFromPrimitiveArtifacts: [implementorPath, verifierPath],
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
 		});
 
 		if (runtime.case !== "completed" || !runtime.finalPackage) {
@@ -915,8 +1024,33 @@ describe("story-lead loop", () => {
 	test("keeps verifier acceptance unknown when recorded verifier outcomes are missing or ambiguous", async () => {
 		const missingFixture = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-verifier-missing",
+			{
+				includeStoryLead: true,
+			},
 		);
 		const missingImplementorPath = `${missingFixture.specPackRoot}/artifacts/${missingFixture.storyId}/001-implementor.json`;
+		const missingProviderBinDir = await createTempDir(
+			"story-lead-loop-verifier-missing-bin",
+		);
+		const missingStoryLead = await writeFakeProviderExecutable({
+			binDir: missingProviderBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-verifier-missing-001", {
+						action: "accept-story",
+						rationale:
+							"Finalize from the primitive artifact set even though verifier evidence is missing.",
+						inputs: {
+							summary:
+								"Finalize from the primitive artifact set even though verifier evidence is missing.",
+							acceptanceCheckRefs: ["primitive-verifier-missing"],
+							recommendedImplLeadAction: "reopen" as const,
+						},
+					}),
+				},
+			],
+		});
 		await seedPrimitiveArtifact({
 			specPackRoot: missingFixture.specPackRoot,
 			storyId: missingFixture.storyId,
@@ -936,6 +1070,10 @@ describe("story-lead loop", () => {
 			}),
 			mode: "run",
 			startedFromPrimitiveArtifacts: [missingImplementorPath],
+			env: {
+				PATH: `${missingProviderBinDir}:${process.env.PATH ?? ""}`,
+				...missingStoryLead.env,
+			},
 		});
 
 		if (missingRuntime.case !== "completed" || !missingRuntime.finalPackage) {
@@ -955,10 +1093,35 @@ describe("story-lead loop", () => {
 
 		const ambiguousFixture = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-verifier-ambiguous",
+			{
+				includeStoryLead: true,
+			},
 		);
 		const ambiguousImplementorPath = `${ambiguousFixture.specPackRoot}/artifacts/${ambiguousFixture.storyId}/001-implementor.json`;
 		const verifierPassPath = `${ambiguousFixture.specPackRoot}/artifacts/${ambiguousFixture.storyId}/002-verifier.json`;
 		const verifierRevisePath = `${ambiguousFixture.specPackRoot}/artifacts/${ambiguousFixture.storyId}/003-verifier-followup.json`;
+		const ambiguousProviderBinDir = await createTempDir(
+			"story-lead-loop-verifier-ambiguous-bin",
+		);
+		const ambiguousStoryLead = await writeFakeProviderExecutable({
+			binDir: ambiguousProviderBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-verifier-ambiguous-001", {
+						action: "accept-story",
+						rationale:
+							"Finalize from the primitive artifact set even though the verifier outcomes are ambiguous.",
+						inputs: {
+							summary:
+								"Finalize from the primitive artifact set even though the verifier outcomes are ambiguous.",
+							acceptanceCheckRefs: ["primitive-verifier-ambiguous"],
+							recommendedImplLeadAction: "reopen" as const,
+						},
+					}),
+				},
+			],
+		});
 		await seedPrimitiveArtifact({
 			specPackRoot: ambiguousFixture.specPackRoot,
 			storyId: ambiguousFixture.storyId,
@@ -1000,6 +1163,10 @@ describe("story-lead loop", () => {
 				verifierPassPath,
 				verifierRevisePath,
 			],
+			env: {
+				PATH: `${ambiguousProviderBinDir}:${process.env.PATH ?? ""}`,
+				...ambiguousStoryLead.env,
+			},
 		});
 
 		if (
@@ -1024,6 +1191,9 @@ describe("story-lead loop", () => {
 	test("TC-3.11a and TC-3.11b record the smallest safe replay boundary for provider-output-invalid and context-window failures", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-replay-boundaries",
+			{
+				includeStoryLead: true,
+			},
 		);
 		const ledger = createStoryRunLedger({
 			specPackRoot,

@@ -331,6 +331,222 @@ describe("story-lead stateless runtime", () => {
 		).not.toContain("provider-rejected-planner-prompt");
 	});
 
+	test("TC-4.4b reports planner timeout failures against the dedicated planner-turn budget", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-lead-planner-timeout",
+			{
+				includeStoryLead: true,
+			},
+		);
+		await writeRunConfig(
+			specPackRoot,
+			createRunConfig({
+				story_lead_provider: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "high",
+				},
+				timeouts: {
+					story_lead_planner_ms: 25,
+					story_orchestrate_ms: 500,
+				},
+			}),
+		);
+
+		const providerBinDir = await createTempDir(
+			"story-lead-planner-timeout-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					delayMs: 60,
+					stdout: providerWrapper("codex-story-lead-timeout-001", {
+						action: "accept-story",
+						rationale:
+							"This response should arrive too late for the planner timeout.",
+						inputs: {
+							summary: "Timed out planner turn should never reach acceptance.",
+							acceptanceCheckRefs: ["planner-timeout"],
+							recommendedImplLeadAction: "reopen" as const,
+						},
+					}),
+				},
+			],
+		});
+
+		const runEnvelope = await storyOrchestrateRun({
+			specPackRoot,
+			storyId,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
+		});
+
+		if (runEnvelope.result?.case !== "interrupted") {
+			throw new Error(
+				`Expected an interrupted planner-timeout run, received ${runEnvelope.result?.case ?? runEnvelope.status}.`,
+			);
+		}
+
+		const events = await readJsonLines<
+			Array<{
+				type: string;
+				summary: string;
+				data?: {
+					configuredPlannerTimeoutMs?: number;
+					configuredWholeRunTimeoutMs?: number;
+				};
+			}>[number]
+		>(runEnvelope.result.eventHistoryPath);
+		const timeoutEvent = events.find(
+			(event) => event.type === "story-lead-planner-timeout",
+		);
+
+		expect(runEnvelope.result.finalPackage.outcome).toBe("interrupted");
+		expect(runEnvelope.result.finalPackage.replayBoundary?.reasoning).toContain(
+			"planner turn exceeded its configured timeout",
+		);
+		expect(
+			runEnvelope.result.finalPackage.replayBoundary?.reasoning,
+		).not.toContain("context window");
+		expect(timeoutEvent?.summary).toContain("planner timeout");
+		expect(timeoutEvent?.data?.configuredPlannerTimeoutMs).toBe(25);
+		expect(timeoutEvent?.data?.configuredWholeRunTimeoutMs).toBeUndefined();
+		expect(events.map((event) => event.type)).not.toContain(
+			"story-orchestrate-timeout",
+		);
+	});
+
+	test("TC-4.5a and TC-4.5b report whole-run timeout separately from planner and child budgets", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-orchestrate-whole-run-timeout",
+			{
+				includeStoryLead: true,
+			},
+		);
+		await writeRunConfig(
+			specPackRoot,
+			createRunConfig({
+				story_implementor: {
+					secondary_harness: "copilot",
+					model: "gpt-5.4",
+					reasoning_effort: "high",
+				},
+				story_lead_provider: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "high",
+				},
+				timeouts: {
+					story_lead_planner_ms: 500,
+					story_orchestrate_ms: 120,
+				},
+			}),
+		);
+
+		const providerBinDir = await createTempDir(
+			"story-orchestrate-whole-run-timeout-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-whole-run-001", {
+						action: "run-implement",
+						rationale:
+							"Run one child step so the overall attempt crosses the whole-run budget before child work can complete.",
+						inputs: {},
+					}),
+				},
+			],
+		});
+		const childProvider = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "copilot",
+			responses: [
+				{
+					delayMs: 800,
+					stdout: providerWrapper("copilot-story-implement-whole-run-001", {
+						outcome: "ready-for-verification",
+						planSummary: "WHOLE_RUN_TIMEOUT_SENTINEL",
+						changedFiles: [],
+						tests: {
+							added: [],
+							modified: [],
+							removed: [],
+							totalAfterStory: 5,
+							deltaFromPriorBaseline: 1,
+						},
+						gatesRun: [
+							{
+								command: "npm run green-verify",
+								result: "not-run" as const,
+							},
+						],
+						selfReview: {
+							findingsFixed: [],
+							findingsSurfaced: [],
+						},
+						openQuestions: [],
+						specDeviations: [],
+						recommendedNextStep: "Run verifier after the implementor step.",
+					}),
+				},
+			],
+		});
+
+		const startedAtMs = Date.now();
+		const runEnvelope = await storyOrchestrateRun({
+			specPackRoot,
+			storyId,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+				...childProvider.env,
+			},
+		});
+		const elapsedMs = Date.now() - startedAtMs;
+
+		if (runEnvelope.result?.case !== "interrupted") {
+			throw new Error(
+				`Expected an interrupted whole-run-timeout result, received ${runEnvelope.result?.case ?? runEnvelope.status}.`,
+			);
+		}
+
+		const events = await readJsonLines<
+			Array<{
+				type: string;
+				data?: {
+					configuredPlannerTimeoutMs?: number;
+					configuredWholeRunTimeoutMs?: number;
+				};
+			}>[number]
+		>(runEnvelope.result.eventHistoryPath);
+		const wholeRunTimeoutEvent = events.find(
+			(event) => event.type === "story-orchestrate-timeout",
+		);
+
+		expect(runEnvelope.result.finalPackage.outcome).toBe("interrupted");
+		expect(elapsedMs).toBeLessThan(700);
+		expect(
+			runEnvelope.result.finalPackage.evidence.implementorArtifacts,
+		).toHaveLength(0);
+		expect(wholeRunTimeoutEvent?.data?.configuredWholeRunTimeoutMs).toBe(120);
+		expect(
+			wholeRunTimeoutEvent?.data?.configuredPlannerTimeoutMs,
+		).toBeUndefined();
+		expect(events.map((event) => event.type)).not.toContain(
+			"story-lead-planner-timeout",
+		);
+		expect(events.map((event) => event.type)).not.toContain(
+			"child-operation-completed",
+		);
+	});
+
 	test("TC-3.7b leaves the latest completed child result recoverable when the runtime crashes before the next planner turn", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-stateless-crash-after-child",

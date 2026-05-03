@@ -81,6 +81,8 @@ When you background any provider-backed CLI call in this phase, keep following i
 
 Start normal story work with `story-orchestrate`. The runtime will call lower-level story operations for you one bounded step at a time and persist the durable story-run record between planner turns.
 
+For the recommended current story-lead setup, use Codex `gpt-5.5` in `story_lead_provider`. Keep the timeout split explicit in `impl-run.config.json`: `story_lead_planner_ms` covers one fresh planner turn, while `story_orchestrate_ms` covers the full `run` or `resume` invocation.
+
 ## 1. Launch story-orchestrate
 
 ```bash

@@ -70,6 +70,9 @@ describe("ls-impl story cycle skill docs", () => {
 		expect(chunk.stdout).toContain(
 			"The normal happy path is `story-orchestrate`",
 		);
+		expect(chunk.stdout).toContain(
+			"the next fresh planner turn should return exactly one bounded action.",
+		);
 		expect(chunk.stdout).toContain("## Local CLI on this branch");
 		expect(chunk.stdout).toContain("npm exec -- lbuild-impl ...");
 		expect(chunk.stdout).toContain("node dist/bin/lbuild-impl.js ...");
@@ -107,6 +110,33 @@ describe("ls-impl story cycle skill docs", () => {
 			"Do not use raw `bun test`; it bypasses the repo Vitest configuration and is not an accepted verification path.",
 		);
 		expect(chunk.stdout).not.toContain("## 1. Launch implementation");
+	});
+
+	test("TC-4.3a/TC-4.3b document the recommended Codex gpt-5.5 one-turn story-lead setup", {
+		timeout: 120_000,
+	}, async () => {
+		await runBuild();
+
+		const chunk = await runCli([
+			"skill",
+			"ls-impl",
+			"operations/31-provider-resolution.md",
+			"1",
+		]);
+
+		expect(chunk.code).toBe(0);
+		expect(chunk.stderr).toBe("");
+		expect(chunk.stdout).toContain(
+			"The recommended current story-lead setup is Codex `gpt-5.5`",
+		);
+		expect(chunk.stdout).toContain(
+			"| `story_lead_provider` | `codex` | `gpt-5.5` | `high` |",
+		);
+		expect(chunk.stdout).toContain(
+			"each fresh planner turn should produce exactly one bounded action",
+		);
+		expect(chunk.stdout).toContain("story_lead_planner_ms");
+		expect(chunk.stdout).toContain("story_orchestrate_ms");
 	});
 
 	test("TC-3.1a ships the story-orchestrate state diagram and lifecycle vocabulary in the built skill docs", {

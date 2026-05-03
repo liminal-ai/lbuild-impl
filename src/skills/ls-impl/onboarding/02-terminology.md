@@ -48,7 +48,7 @@ These are the primitives and process terms used throughout this skill. Read once
 
 **Secondary harness** — Optional provider the CLI invokes for GPT-backed roles: `codex`, `copilot`, or `none` (meaning "use the primary harness"). Configured per role in `impl-run.config.json`.
 
-**Story-lead config** — Optional `story_lead_provider` role assignment in `impl-run.config.json`. When present, it selects the provider/model used by `story-orchestrate`. `story_lead` still parses as a deprecated compatibility alias, but `story_lead_provider` is the canonical key. Keep the choice explicit until a dedicated default is chosen.
+**Story-lead config** — Required `story_lead_provider` role assignment for `story-orchestrate` in `impl-run.config.json`. It selects the provider/model used by the composed story loop. The removed `story_lead` alias is rejected; keep `story_lead_provider` explicit until a dedicated default is chosen.
 
 **Role defaults** — Default harness + model + reasoning-effort per role, resolved deterministically at initialization based on which secondary harnesses are available.
 

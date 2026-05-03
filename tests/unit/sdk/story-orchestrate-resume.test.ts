@@ -10,7 +10,19 @@ import {
 	createStoryOrchestrateSpecPack,
 	seedStoryRunAttempt,
 } from "../../support/story-orchestrate-fixtures";
-import { readJsonLines } from "../../support/test-helpers";
+import {
+	createTempDir,
+	readJsonLines,
+	writeFakeProviderExecutable,
+	writeTextFile,
+} from "../../support/test-helpers";
+
+function providerWrapper(sessionId: string, payload: unknown): string {
+	return JSON.stringify({
+		sessionId,
+		result: payload,
+	});
+}
 
 describe("story-orchestrate resume sdk operation", () => {
 	function createNeedsRulingFinalPackage(input: {
@@ -122,6 +134,9 @@ describe("story-orchestrate resume sdk operation", () => {
 	test("surfaces interrupted terminal packages and recovery guidance for both run and resume flows", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-orchestrate-sdk-resume-interrupted-terminal",
+			{
+				includeStoryLead: true,
+			},
 		);
 		const priorIncompleteMode =
 			process.env.LBUILD_IMPL_STORY_ORCHESTRATE_INCOMPLETE;
@@ -209,8 +224,42 @@ describe("story-orchestrate resume sdk operation", () => {
 	test("preserves prior artifact history and appends monotonic events when resuming an existing attempt", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-orchestrate-sdk-resume-sequencing",
+			{
+				includeStoryLead: true,
+			},
 		);
 		const checkpointArtifact = `${specPackRoot}/artifacts/${storyId}/001-implementor.json`;
+		await writeTextFile(
+			checkpointArtifact,
+			`${JSON.stringify(
+				{
+					command: "story-implement",
+					outcome: "ready-for-verification",
+				},
+				null,
+				2,
+			)}\n`,
+		);
+		const providerBinDir = await createTempDir(
+			"story-orchestrate-sdk-resume-sequencing-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-resume-sequencing-001", {
+						action: "block-story",
+						rationale:
+							"Keep the resumed attempt blocked so the runtime can preserve prior artifacts and monotonic event history.",
+						inputs: {
+							reason: "Resume left follow-up work outstanding.",
+							evidence: [checkpointArtifact],
+						},
+					}),
+				},
+			],
+		});
 		const attempt = await seedStoryRunAttempt({
 			specPackRoot,
 			storyId,
@@ -229,6 +278,10 @@ describe("story-orchestrate resume sdk operation", () => {
 			specPackRoot,
 			storyId,
 			storyRunId: attempt.storyRunId,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
 		});
 		const statusEnvelope = await storyOrchestrateStatus({
 			specPackRoot,
@@ -246,12 +299,12 @@ describe("story-orchestrate resume sdk operation", () => {
 				storyRunId: attempt.storyRunId,
 			}),
 		);
-		expect(events.map((event) => event.sequence)).toEqual([3, 4, 5]);
+		expect(events.map((event) => event.sequence)).toEqual([3, 4, 5, 6, 7]);
 		expect(statusEnvelope.result).toEqual(
 			expect.objectContaining({
 				case: "single-attempt",
 				storyRunId: attempt.storyRunId,
-				latestEventSequence: 5,
+				latestEventSequence: 7,
 				currentSnapshot: expect.objectContaining({
 					latestArtifacts: expect.arrayContaining([
 						expect.objectContaining({
@@ -266,13 +319,48 @@ describe("story-orchestrate resume sdk operation", () => {
 	test("returns the persisted review-request artifact reference when a reopen request is accepted", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-orchestrate-sdk-resume-review-artifact",
+			{
+				includeStoryLead: true,
+			},
 		);
+		const providerBinDir = await createTempDir(
+			"story-orchestrate-sdk-resume-review-artifact-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper(
+						"codex-story-lead-resume-review-artifact-001",
+						{
+							action: "block-story",
+							rationale:
+								"Keep the reopened attempt blocked while preserving the accepted review-request artifact reference.",
+							inputs: {
+								reason: "Reopen for one more receipt pass.",
+								evidence: ["review-001"],
+							},
+						},
+					),
+				},
+			],
+		});
 		const acceptedAttempt = await seedStoryRunAttempt({
 			specPackRoot,
 			storyId,
 			status: "accepted",
 			finalPackageOutcome: "accepted",
 		});
+		for (const artifactPath of [
+			`/tmp/spec-pack/artifacts/${storyId}/001-implementor.json`,
+			`/tmp/spec-pack/artifacts/${storyId}/002-verifier.json`,
+		]) {
+			await writeTextFile(
+				artifactPath,
+				`${JSON.stringify({ ok: true }, null, 2)}\n`,
+			);
+		}
 
 		const envelope = await storyOrchestrateResume({
 			specPackRoot,
@@ -290,6 +378,10 @@ describe("story-orchestrate resume sdk operation", () => {
 						requiredResponse: "Add the missing receipt notes.",
 					},
 				],
+			},
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
 			},
 		});
 

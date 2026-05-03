@@ -20,7 +20,7 @@ Check secondary harness availability in this order and stop at the first availab
 
 The result selects which defaults table applies below. Record a degraded-diversity condition in `team-impl-log.md` when neither is available.
 
-For normal story work, `story-orchestrate` is the happy path and it requires an explicit `story_lead_provider` entry in `impl-run.config.json`. Each planner turn returns one bounded action, so keep the story-lead provider choice explicit in the config you write during setup.
+For normal story work, `story-orchestrate` is the happy path and it requires an explicit `story_lead_provider` entry in `impl-run.config.json`. The recommended current story-lead setup is Codex `gpt-5.5`: each fresh planner turn should produce exactly one bounded action, then exit so the runtime can persist durable state before the next call.
 
 ## Role defaults
 
@@ -32,7 +32,7 @@ Each role gets a `secondary_harness`, `model`, and `reasoning_effort`. The epic 
 
 | Role | secondary_harness | model | reasoning_effort |
 |------|---|---|---|
-| `story_lead_provider` | `codex` | `gpt-5.4` | `high` |
+| `story_lead_provider` | `codex` | `gpt-5.5` | `high` |
 | `story_implementor` | `codex` | `gpt-5.4` | `high` |
 | `quick_fixer` | `codex` | `gpt-5.4` | `high` |
 | `story_verifier` | `codex` | `gpt-5.4` | `xhigh` |
@@ -89,6 +89,8 @@ Defaults to 3. Do not change unless the user asks.
   "self_review": { "passes": 3 },
   "timeouts": {
     "provider_startup_timeout_ms": 300000,
+    "story_lead_planner_ms": 600000,
+    "story_orchestrate_ms": 7200000,
     "story_implementor_silence_timeout_ms": 600000,
     "story_self_review_silence_timeout_ms": 480000,
     "story_verifier_silence_timeout_ms": 360000,
@@ -105,7 +107,7 @@ Defaults to 3. Do not change unless the user asks.
 }
 ```
 
-Write this file at the spec-pack root with the appropriate table's values filled in. `preflight` will validate the contents. Keep `story_lead_provider` explicit for `story-orchestrate`; that role is required for the composed story path and should not rely on an implied default provider.
+Write this file at the spec-pack root with the appropriate table's values filled in. `preflight` will validate the contents. Keep `story_lead_provider` explicit for `story-orchestrate`; that role is required for the composed story path and should not rely on an implied default provider. Use `story_lead_planner_ms` for one planner turn and `story_orchestrate_ms` for the whole `run` or `resume` invocation so timeout failures identify the budget that expired.
 
 ## Where defaults are recorded
 

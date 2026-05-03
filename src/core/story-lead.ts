@@ -10,6 +10,7 @@ import { storyVerify } from "../sdk/operations/story-verify.js";
 import {
 	type ImplRunConfig,
 	loadRunConfig,
+	requireStoryLeadProviderConfig,
 	type RoleAssignment,
 	resolveRunConfigPath,
 	resolveRunTimeouts,
@@ -134,6 +135,7 @@ type OperationEnvelope<TResult> = {
 type StoryLeadFailureReason =
 	| "provider-output-invalid"
 	| "context-window-limit"
+	| "planner-timeout"
 	| "interrupted";
 
 type StoryLeadTerminalDecision =
@@ -485,6 +487,15 @@ function replayBoundaryForFailure(input: {
 				smallestSafeStep: "rehydrate-from-durable-ledger",
 				reasoning:
 					"The retained session exhausted its context window, so the next safe step is to rehydrate from the durable ledger before continuing.",
+				validArtifactPaths: input.validArtifactPaths,
+				requiresFreshStoryLeadSession: true,
+				requiresFreshChildProviderSession: false,
+			};
+		case "planner-timeout":
+			return {
+				smallestSafeStep: "rehydrate-from-durable-ledger",
+				reasoning:
+					"The story-lead planner turn exceeded its configured timeout, so the next safe step is to rehydrate from the durable ledger and retry the planner turn with a fresh story-lead provider session.",
 				validArtifactPaths: input.validArtifactPaths,
 				requiresFreshStoryLeadSession: true,
 				requiresFreshChildProviderSession: false,
@@ -949,20 +960,24 @@ export async function runStoryLead(
 			input.existingAttempt?.currentSnapshot.status === "accepted" &&
 			input.reviewRequest,
 	);
-	const attemptPaths = reopeningAcceptedAttempt
-		? await input.ledger.createAttempt()
-		: (input.existingAttempt ?? (await input.ledger.createAttempt()));
 	const storyId = input.storyId;
 	const storyTitle = await resolveStoryTitle(input.specPackRoot, storyId);
 	const startedAtMs = Date.now();
-	const loadedConfig = await loadRunConfigIfPresent({
+	const loadedConfig = requireStoryLeadProviderConfig({
 		specPackRoot: input.specPackRoot,
 		configPath: input.configPath,
+		config: await loadRunConfigIfPresent({
+			specPackRoot: input.specPackRoot,
+			configPath: input.configPath,
+		}),
 	});
+	const attemptPaths = reopeningAcceptedAttempt
+		? await input.ledger.createAttempt()
+		: (input.existingAttempt ?? (await input.ledger.createAttempt()));
 	const callerHarnessConfig = loadedConfig?.caller_harness;
 	const storyLeadAssignment = resolveStoryLeadAssignment(loadedConfig);
 	const gateCommands = loadedConfig?.verification_gates;
-	const timeouts = loadedConfig ? resolveRunTimeouts(loadedConfig) : undefined;
+	const timeouts = resolveRunTimeouts(loadedConfig);
 	const resolvedHeartbeat = resolveCallerHeartbeatOptions({
 		callerHarness: input.callerHarness,
 		heartbeatCadenceMinutes: input.heartbeatCadenceMinutes,
@@ -1105,6 +1120,53 @@ export async function runStoryLead(
 		await writeCurrentSnapshot();
 	};
 
+	const buildWholeRunTimeoutInterruptedResult = async (params?: {
+		currentSummary?: string;
+		nextIntentSummary?: string;
+	}): Promise<StoryLeadRuntimeResult> =>
+		buildInterruptedResult({
+			reason: "interrupted",
+			eventType: "story-orchestrate-timeout",
+			eventSummary: `Story-orchestrate exceeded the whole-run timeout of ${timeouts.story_orchestrate_ms}ms.`,
+			currentSummary:
+				params?.currentSummary ??
+				"Story-orchestrate exceeded the whole-run timeout before terminal completion.",
+			nextIntentSummary:
+				params?.nextIntentSummary ??
+				"Use story-orchestrate resume to continue this interrupted attempt from the latest durable checkpoint.",
+			eventData: {
+				configuredWholeRunTimeoutMs: timeouts.story_orchestrate_ms,
+				elapsedMs: Math.max(0, Date.now() - startedAtMs),
+			},
+		});
+
+	const hasWholeRunTimedOut = (): boolean =>
+		Date.now() - startedAtMs >= timeouts.story_orchestrate_ms;
+
+	const plannerExecutionBudget = (): {
+		effectiveTimeoutMs: number;
+		cappedByWholeRun: boolean;
+		remainingWholeRunMs: number;
+	} => {
+		const remainingWholeRunMs = Math.max(
+			0,
+			timeouts.story_orchestrate_ms - (Date.now() - startedAtMs),
+		);
+		return {
+			effectiveTimeoutMs: Math.max(
+				1,
+				Math.min(timeouts.story_lead_planner_ms, remainingWholeRunMs),
+			),
+			cappedByWholeRun:
+				remainingWholeRunMs > 0 &&
+				remainingWholeRunMs < timeouts.story_lead_planner_ms,
+			remainingWholeRunMs,
+		};
+	};
+
+	const remainingWholeRunMs = (): number =>
+		Math.max(0, timeouts.story_orchestrate_ms - (Date.now() - startedAtMs));
+
 	const buildInterruptedResult = async (params: {
 		reason: StoryLeadFailureReason;
 		eventType: string;
@@ -1219,6 +1281,54 @@ export async function runStoryLead(
 				: {}),
 			...(acceptedRulingArtifact ? { acceptedRulingArtifact } : {}),
 		};
+	};
+
+	const runChildWithinWholeRunBudget = async <TResult>(params: {
+		command: string;
+		execute: () => Promise<OperationEnvelope<TResult>>;
+	}): Promise<
+		| { case: "completed"; envelope: OperationEnvelope<TResult> }
+		| { case: "timed-out"; result: StoryLeadRuntimeResult }
+	> => {
+		const budgetMs = remainingWholeRunMs();
+		if (budgetMs <= 0) {
+			return {
+				case: "timed-out",
+				result: await buildWholeRunTimeoutInterruptedResult({
+					currentSummary: `Story-orchestrate exhausted the whole-run timeout before ${params.command} could start.`,
+				}),
+			};
+		}
+
+		let timeoutId: ReturnType<typeof setTimeout> | undefined;
+		const operationPromise = params.execute();
+		operationPromise.catch(() => undefined);
+		const timeoutPromise = new Promise<"whole-run-timeout">((resolve) => {
+			timeoutId = setTimeout(() => resolve("whole-run-timeout"), budgetMs);
+		});
+		const winner = await Promise.race([
+			operationPromise.then((envelope) => ({
+				case: "completed" as const,
+				envelope,
+			})),
+			timeoutPromise,
+		]);
+
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+
+		if (winner === "whole-run-timeout") {
+			return {
+				case: "timed-out",
+				result: await buildWholeRunTimeoutInterruptedResult({
+					currentSummary: `Story-orchestrate exceeded the whole-run timeout while ${params.command} was still running.`,
+					nextIntentSummary: `Use story-orchestrate resume to continue from the latest durable checkpoint; ${params.command} did not complete inside the story-orchestrate wall-clock budget.`,
+				}),
+			};
+		}
+
+		return winner;
 	};
 
 	await writeCurrentSnapshot();
@@ -1407,6 +1517,9 @@ export async function runStoryLead(
 	if (delayMs > 0) {
 		await sleep(delayMs);
 	}
+	if (hasWholeRunTimedOut()) {
+		return await buildWholeRunTimeoutInterruptedResult();
+	}
 
 	try {
 		const failureMode = readFailureMode();
@@ -1504,13 +1617,22 @@ export async function runStoryLead(
 							},
 							replayBoundary: null,
 						});
-						const envelope = (await storyImplement({
-							specPackRoot: input.specPackRoot,
-							storyId,
-							configPath: input.configPath,
-							env: input.env,
-							disableHeartbeats: true,
-						})) as OperationEnvelope<ImplementorResult>;
+						const childResult =
+							await runChildWithinWholeRunBudget<ImplementorResult>({
+								command: "story-implement",
+								execute: () =>
+									storyImplement({
+										specPackRoot: input.specPackRoot,
+										storyId,
+										configPath: input.configPath,
+										env: input.env,
+										disableHeartbeats: true,
+									}) as Promise<OperationEnvelope<ImplementorResult>>,
+							});
+						if (childResult.case === "timed-out") {
+							return childResult.result;
+						}
+						const envelope = childResult.envelope;
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-implement",
 							envelope,
@@ -1593,15 +1715,24 @@ export async function runStoryLead(
 							},
 							replayBoundary: null,
 						});
-						const envelope = (await storyContinue({
-							specPackRoot: input.specPackRoot,
-							storyId,
-							continuationHandle: continuation,
-							followupRequest: action.inputs.promptAddendum,
-							configPath: input.configPath,
-							env: input.env,
-							disableHeartbeats: true,
-						})) as OperationEnvelope<ImplementorResult>;
+						const childResult =
+							await runChildWithinWholeRunBudget<ImplementorResult>({
+								command: "story-continue",
+								execute: () =>
+									storyContinue({
+										specPackRoot: input.specPackRoot,
+										storyId,
+										continuationHandle: continuation,
+										followupRequest: action.inputs.promptAddendum,
+										configPath: input.configPath,
+										env: input.env,
+										disableHeartbeats: true,
+									}) as Promise<OperationEnvelope<ImplementorResult>>,
+							});
+						if (childResult.case === "timed-out") {
+							return childResult.result;
+						}
+						const envelope = childResult.envelope;
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-continue",
 							envelope,
@@ -1680,16 +1811,25 @@ export async function runStoryLead(
 							},
 							replayBoundary: null,
 						});
-						const envelope = (await storySelfReview({
-							specPackRoot: input.specPackRoot,
-							storyId,
-							continuationHandle: continuation,
-							passes: action.inputs.passes ?? 1,
-							passArtifactPaths: [],
-							configPath: input.configPath,
-							env: input.env,
-							disableHeartbeats: true,
-						})) as OperationEnvelope<StorySelfReviewResult>;
+						const childResult =
+							await runChildWithinWholeRunBudget<StorySelfReviewResult>({
+								command: "story-self-review",
+								execute: () =>
+									storySelfReview({
+										specPackRoot: input.specPackRoot,
+										storyId,
+										continuationHandle: continuation,
+										passes: action.inputs.passes ?? 1,
+										passArtifactPaths: [],
+										configPath: input.configPath,
+										env: input.env,
+										disableHeartbeats: true,
+									}) as Promise<OperationEnvelope<StorySelfReviewResult>>,
+							});
+						if (childResult.case === "timed-out") {
+							return childResult.result;
+						}
+						const envelope = childResult.envelope;
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-self-review",
 							envelope,
@@ -1791,17 +1931,26 @@ export async function runStoryLead(
 								},
 								replayBoundary: null,
 							});
-							const envelope = (await storyVerify({
-								specPackRoot: input.specPackRoot,
-								storyId,
-								provider: continuation.provider,
-								sessionId: continuation.sessionId,
-								response,
-								orchestratorContext: action.inputs.orchestratorContext,
-								configPath: input.configPath,
-								env: input.env,
-								disableHeartbeats: true,
-							})) as OperationEnvelope<StoryVerifierResult>;
+							const childResult =
+								await runChildWithinWholeRunBudget<StoryVerifierResult>({
+									command: "story-verify",
+									execute: () =>
+										storyVerify({
+											specPackRoot: input.specPackRoot,
+											storyId,
+											provider: continuation.provider,
+											sessionId: continuation.sessionId,
+											response,
+											orchestratorContext: action.inputs.orchestratorContext,
+											configPath: input.configPath,
+											env: input.env,
+											disableHeartbeats: true,
+										}) as Promise<OperationEnvelope<StoryVerifierResult>>,
+								});
+							if (childResult.case === "timed-out") {
+								return childResult.result;
+							}
+							const envelope = childResult.envelope;
 							const artifactRefs = semanticArtifactRefsFromEnvelope(
 								"story-verify",
 								envelope,
@@ -1862,16 +2011,25 @@ export async function runStoryLead(
 							},
 							replayBoundary: null,
 						});
-						const envelope = (await storyVerify({
-							specPackRoot: input.specPackRoot,
-							storyId,
-							provider: action.inputs.provider,
-							orchestratorContext:
-								action.inputs.orchestratorContext ?? action.inputs.focus,
-							configPath: input.configPath,
-							env: input.env,
-							disableHeartbeats: true,
-						})) as OperationEnvelope<StoryVerifierResult>;
+						const childResult =
+							await runChildWithinWholeRunBudget<StoryVerifierResult>({
+								command: "story-verify",
+								execute: () =>
+									storyVerify({
+										specPackRoot: input.specPackRoot,
+										storyId,
+										provider: action.inputs.provider,
+										orchestratorContext:
+											action.inputs.orchestratorContext ?? action.inputs.focus,
+										configPath: input.configPath,
+										env: input.env,
+										disableHeartbeats: true,
+									}) as Promise<OperationEnvelope<StoryVerifierResult>>,
+							});
+						if (childResult.case === "timed-out") {
+							return childResult.result;
+						}
+						const envelope = childResult.envelope;
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-verify",
 							envelope,
@@ -1934,14 +2092,23 @@ export async function runStoryLead(
 							},
 							replayBoundary: null,
 						});
-						const envelope = (await quickFix({
-							specPackRoot: input.specPackRoot,
-							request: action.inputs.remediationGoal,
-							workingDirectory: action.inputs.workingDirectory,
-							configPath: input.configPath,
-							env: input.env,
-							disableHeartbeats: true,
-						})) as OperationEnvelope<QuickFixResult>;
+						const childResult =
+							await runChildWithinWholeRunBudget<QuickFixResult>({
+								command: "quick-fix",
+								execute: () =>
+									quickFix({
+										specPackRoot: input.specPackRoot,
+										request: action.inputs.remediationGoal,
+										workingDirectory: action.inputs.workingDirectory,
+										configPath: input.configPath,
+										env: input.env,
+										disableHeartbeats: true,
+									}) as Promise<OperationEnvelope<QuickFixResult>>,
+							});
+						if (childResult.case === "timed-out") {
+							return childResult.result;
+						}
+						const envelope = childResult.envelope;
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"quick-fix",
 							envelope,
@@ -2046,6 +2213,13 @@ export async function runStoryLead(
 			};
 
 			for (let turn = 1; turn <= STORY_LEAD_MAX_TURNS; turn += 1) {
+				if (hasWholeRunTimedOut()) {
+					return await buildWholeRunTimeoutInterruptedResult({
+						currentSummary:
+							"Story-orchestrate exceeded the whole-run timeout before the next planner turn could start.",
+					});
+				}
+
 				let prompt: string;
 				let plannerContext: StoryLeadPlannerContext;
 				try {
@@ -2061,12 +2235,11 @@ export async function runStoryLead(
 						runtimeSettings: {
 							storyGate: gateCommands?.story,
 							epicGate: gateCommands?.epic,
-							plannerTimeoutMs: timeouts?.story_implementor_ms ?? 7_200_000,
-							wholeRunTimeoutMs: timeouts?.story_implementor_ms ?? 7_200_000,
-							providerStartupTimeoutMs:
-								timeouts?.provider_startup_timeout_ms ?? 300_000,
+							plannerTimeoutMs: timeouts.story_lead_planner_ms,
+							wholeRunTimeoutMs: timeouts.story_orchestrate_ms,
+							providerStartupTimeoutMs: timeouts.provider_startup_timeout_ms,
 							providerActiveSilenceTimeoutMs:
-								timeouts?.story_implementor_silence_timeout_ms ?? 600_000,
+								timeouts.story_implementor_silence_timeout_ms,
 						},
 					});
 					prompt = promptInput.prompt;
@@ -2095,17 +2268,34 @@ export async function runStoryLead(
 					throw error;
 				}
 
+				const plannerBudget = plannerExecutionBudget();
+				if (plannerBudget.remainingWholeRunMs <= 0) {
+					return await buildWholeRunTimeoutInterruptedResult({
+						currentSummary:
+							"Story-orchestrate exhausted the whole-run timeout before the planner call could start.",
+					});
+				}
+
 				const providerExecution = await adapter.execute({
 					prompt,
 					cwd: providerCwd,
 					model: storyLeadAssignment.model,
 					reasoningEffort: storyLeadAssignment.reasoning_effort,
-					timeoutMs: timeouts?.story_implementor_ms ?? 7_200_000,
-					startupTimeoutMs: timeouts?.provider_startup_timeout_ms ?? 300_000,
-					silenceTimeoutMs:
-						timeouts?.story_implementor_silence_timeout_ms ?? 600_000,
+					timeoutMs: plannerBudget.effectiveTimeoutMs,
+					startupTimeoutMs: timeouts.provider_startup_timeout_ms,
+					silenceTimeoutMs: timeouts.story_implementor_silence_timeout_ms,
 					resultSchema: storyLeadActionSchema,
 				});
+				if (
+					(providerExecution.errorCode === "PROVIDER_TIMEOUT" ||
+						providerExecution.timedOut) &&
+					plannerBudget.cappedByWholeRun
+				) {
+					return await buildWholeRunTimeoutInterruptedResult({
+						currentSummary:
+							"Story-orchestrate exceeded the whole-run timeout while waiting for the current planner turn.",
+					});
+				}
 
 				if (
 					providerExecution.exitCode !== 0 ||
@@ -2141,6 +2331,26 @@ export async function runStoryLead(
 								"Required durable planner context cannot be summarized or truncated after provider-side input-limit rejection.",
 						};
 						break;
+					}
+
+					if (
+						providerExecution.errorCode === "PROVIDER_TIMEOUT" ||
+						providerExecution.timedOut
+					) {
+						return await buildInterruptedResult({
+							reason: "planner-timeout",
+							eventType: "story-lead-planner-timeout",
+							eventSummary: `Story-lead planner turn exceeded the configured planner timeout of ${timeouts.story_lead_planner_ms}ms.`,
+							currentSummary:
+								"Story-lead planner turn timed out before it could return the next bounded action.",
+							nextIntentSummary:
+								"Resume from the durable story-run record and re-run the next planner turn with a fresh story-lead provider session.",
+							eventData: {
+								errorCode: providerExecution.errorCode,
+								configuredPlannerTimeoutMs: timeouts.story_lead_planner_ms,
+								elapsedMs: providerExecution.elapsedMs,
+							},
+						});
 					}
 
 					return await buildInterruptedResult({
@@ -2250,6 +2460,12 @@ export async function runStoryLead(
 				if (typeof childSummaryOrInterrupt !== "string") {
 					return childSummaryOrInterrupt;
 				}
+				if (hasWholeRunTimedOut()) {
+					return await buildWholeRunTimeoutInterruptedResult({
+						currentSummary:
+							"Story-orchestrate exceeded the whole-run timeout after completing a bounded child operation.",
+					});
+				}
 
 				if (terminalDecision) {
 					break;
@@ -2267,6 +2483,9 @@ export async function runStoryLead(
 						"Use story-orchestrate resume to continue this interrupted attempt from the latest durable ledger state.",
 				});
 			}
+		}
+		if (hasWholeRunTimedOut()) {
+			return await buildWholeRunTimeoutInterruptedResult();
 		}
 
 		const implementorArtifacts = filterArtifactsByKind(

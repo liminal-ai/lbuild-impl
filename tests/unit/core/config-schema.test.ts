@@ -113,19 +113,13 @@ describe("impl-run config schema", () => {
 		expect(parsed.story_lead_provider?.secondary_harness).toBe("codex");
 	});
 
-	test("accepts deprecated story_lead as a compatibility alias and normalizes it to story_lead_provider", async () => {
-		const { implRunConfigSchema } = await import(
-			"../../../src/core/config-schema"
-		);
+	test("TC-4.1a requires explicit story_lead_provider before story-orchestrate work can start", async () => {
+		const { implRunConfigSchema, requireStoryLeadProviderConfig } =
+			await import("../../../src/core/config-schema");
 
 		const parsed = implRunConfigSchema.parse({
 			version: 1,
 			primary_harness: "claude-code",
-			story_lead: {
-				secondary_harness: "copilot",
-				model: "gpt-5.4",
-				reasoning_effort: "high",
-			},
 			story_implementor: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
@@ -159,8 +153,61 @@ describe("impl-run config schema", () => {
 			},
 		});
 
-		expect(parsed.story_lead_provider?.secondary_harness).toBe("copilot");
-		expect("story_lead" in parsed).toBe(false);
+		expect(() =>
+			requireStoryLeadProviderConfig({
+				specPackRoot: "/tmp/spec-pack",
+				config: parsed,
+			}),
+		).toThrow(/story-orchestrate requires explicit story_lead_provider/u);
+	});
+
+	test("TC-4.2a and TC-4.2b reject the legacy story_lead alias instead of normalizing it", async () => {
+		const { implRunConfigSchema } = await import(
+			"../../../src/core/config-schema"
+		);
+
+		expect(() =>
+			implRunConfigSchema.parse({
+				version: 1,
+				primary_harness: "claude-code",
+				story_lead: {
+					secondary_harness: "copilot",
+					model: "gpt-5.4",
+					reasoning_effort: "high",
+				},
+				story_implementor: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "high",
+				},
+				quick_fixer: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "medium",
+				},
+				story_verifier: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "xhigh",
+				},
+				self_review: {
+					passes: 3,
+				},
+				epic_verifiers: [
+					{
+						label: "epic-verifier-1",
+						secondary_harness: "codex",
+						model: "gpt-5.4",
+						reasoning_effort: "xhigh",
+					},
+				],
+				epic_synthesizer: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "xhigh",
+				},
+			}),
+		).toThrow(/story_lead is no longer supported; use story_lead_provider/u);
 	});
 
 	test("TC-2.3b accepts the Claude-only story implementor fallback shape", async () => {
@@ -716,10 +763,11 @@ describe("impl-run config schema", () => {
 		).toThrow(/reasoning_effort 'max'/);
 	});
 
-	test("accepts persisted verification gates and timeout overrides", async () => {
+	test("TC-4.1b and TC-4.4a accept persisted verification gates plus distinct planner and whole-run timeout overrides", async () => {
 		const {
 			DEFAULT_RUN_TIMEOUTS,
 			implRunConfigSchema,
+			requireStoryLeadProviderConfig,
 			resolveConfiguredVerificationGates,
 			resolveRunTimeouts,
 		} = await import("../../../src/core/config-schema");
@@ -727,6 +775,11 @@ describe("impl-run config schema", () => {
 		const parsed = implRunConfigSchema.parse({
 			version: 1,
 			primary_harness: "claude-code",
+			story_lead_provider: {
+				secondary_harness: "codex",
+				model: "gpt-5.4",
+				reasoning_effort: "high",
+			},
 			story_implementor: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
@@ -763,6 +816,8 @@ describe("impl-run config schema", () => {
 				epic: "corepack pnpm run verify-all",
 			},
 			timeouts: {
+				story_lead_planner_ms: 12_000,
+				story_orchestrate_ms: 34_000,
 				story_implementor_ms: 9_000,
 				quick_fixer_ms: 8_000,
 			},
@@ -774,8 +829,16 @@ describe("impl-run config schema", () => {
 			storyGateSource: "impl-run.config.json verification_gates",
 			epicGateSource: "impl-run.config.json verification_gates",
 		});
+		expect(
+			requireStoryLeadProviderConfig({
+				specPackRoot: "/tmp/spec-pack",
+				config: parsed,
+			}).story_lead_provider.secondary_harness,
+		).toBe("codex");
 		expect(resolveRunTimeouts(parsed)).toEqual({
 			...DEFAULT_RUN_TIMEOUTS,
+			story_lead_planner_ms: 12_000,
+			story_orchestrate_ms: 34_000,
 			story_implementor_ms: 9_000,
 			quick_fixer_ms: 8_000,
 		});

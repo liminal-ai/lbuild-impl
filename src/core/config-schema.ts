@@ -57,6 +57,8 @@ export const verificationGatesConfigSchema = z
 export const runTimeoutsSchema = z
 	.object({
 		provider_startup_timeout_ms: z.number().int().positive(),
+		story_lead_planner_ms: z.number().int().positive(),
+		story_orchestrate_ms: z.number().int().positive(),
 		story_implementor_ms: z.number().int().positive(),
 		story_implementor_silence_timeout_ms: z.number().int().positive(),
 		story_verifier_ms: z.number().int().positive(),
@@ -76,6 +78,8 @@ export const runTimeoutsSchema = z
 
 export const DEFAULT_RUN_TIMEOUTS = {
 	provider_startup_timeout_ms: 300_000,
+	story_lead_planner_ms: 600_000,
+	story_orchestrate_ms: 7_200_000,
 	story_implementor_ms: 7_200_000,
 	story_implementor_silence_timeout_ms: 600_000,
 	story_verifier_ms: 3_600_000,
@@ -180,7 +184,6 @@ export const implRunConfigSchema = z
 		primary_harness: primaryHarnessSchema,
 		story_implementor: roleAssignmentSchema,
 		story_lead_provider: roleAssignmentSchema.optional(),
-		// Deprecated compatibility alias; prefer story_lead_provider.
 		story_lead: roleAssignmentSchema.optional(),
 		quick_fixer: roleAssignmentSchema,
 		story_verifier: roleAssignmentSchema,
@@ -201,28 +204,14 @@ export const implRunConfigSchema = z
 	})
 	.strict()
 	.superRefine((value, ctx) => {
-		if (
-			value.story_lead &&
-			value.story_lead_provider &&
-			JSON.stringify(value.story_lead) !==
-				JSON.stringify(value.story_lead_provider)
-		) {
+		if (value.story_lead) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				message:
-					"story_lead is a deprecated alias and must match story_lead_provider when both are present",
+				message: "story_lead is no longer supported; use story_lead_provider",
 				path: ["story_lead"],
 			});
 		}
 	})
-	.transform(({ story_lead, ...value }) => ({
-		...value,
-		...(value.story_lead_provider
-			? {}
-			: story_lead
-				? { story_lead_provider: story_lead }
-				: {}),
-	}))
 	.pipe(implRunConfigCanonicalSchema);
 
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
@@ -295,6 +284,27 @@ export function resolveRunTimeouts(config: ImplRunConfig): ResolvedRunTimeouts {
 	return {
 		...DEFAULT_RUN_TIMEOUTS,
 		...(config.timeouts ?? {}),
+	};
+}
+
+export function requireStoryLeadProviderConfig(input: {
+	specPackRoot: string;
+	configPath?: string;
+	config: ImplRunConfig | undefined;
+}): ImplRunConfig & { story_lead_provider: RoleAssignment } {
+	const resolvedPath = resolveRunConfigPath(
+		input.specPackRoot,
+		input.configPath,
+	);
+
+	if (!input.config?.story_lead_provider) {
+		throw new ConfigLoadError(
+			`Run-config validation failed for ${resolvedPath}: story-orchestrate requires explicit story_lead_provider`,
+		);
+	}
+
+	return input.config as ImplRunConfig & {
+		story_lead_provider: RoleAssignment;
 	};
 }
 

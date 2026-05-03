@@ -31,6 +31,9 @@ describe("ls-impl orchestration docs", () => {
 		expect(terminology).toContain("**Caller harness**");
 		expect(terminology).toContain("**Provider harness**");
 		expect(terminology).toContain("`story_lead_provider`");
+		expect(terminology).toContain("The removed `story_lead` alias is rejected");
+		expect(terminology).not.toContain("story_lead still parses");
+		expect(terminology).not.toContain("deprecated compatibility alias");
 		expect(operatingModel).toContain(
 			"Those heartbeat reminders are written for the caller harness watching the command",
 		);

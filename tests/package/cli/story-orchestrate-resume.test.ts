@@ -6,19 +6,65 @@ import {
 	createStoryOrchestrateSpecPack,
 	seedStoryRunAttempt,
 } from "../../support/story-orchestrate-fixtures";
-import { writeTextFile } from "../../support/test-helpers";
+import {
+	createTempDir,
+	writeFakeProviderExecutable,
+	writeTextFile,
+} from "../../support/test-helpers";
+
+function providerWrapper(sessionId: string, payload: unknown): string {
+	return JSON.stringify({
+		sessionId,
+		result: payload,
+	});
+}
 
 describe("story-orchestrate resume CLI", () => {
 	test("TC-2.6a accepts a valid review request file and reopens an accepted attempt as a new story-run", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-orchestrate-resume-review-request",
+			{
+				includeStoryLead: true,
+			},
 		);
+		const providerBinDir = await createTempDir(
+			"story-orchestrate-resume-review-request-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper(
+						"codex-story-orchestrate-resume-review-request-001",
+						{
+							action: "block-story",
+							rationale:
+								"Keep the reopened attempt blocked while the requested handoff pass is still outstanding.",
+							inputs: {
+								reason: "Please reopen this story for one more handoff pass.",
+								evidence: ["review-001"],
+							},
+						},
+					),
+				},
+			],
+		});
 		const acceptedAttempt = await seedStoryRunAttempt({
 			specPackRoot,
 			storyId,
 			status: "accepted",
 			finalPackageOutcome: "accepted",
 		});
+		for (const artifactPath of [
+			`/tmp/spec-pack/artifacts/${storyId}/001-implementor.json`,
+			`/tmp/spec-pack/artifacts/${storyId}/002-verifier.json`,
+		]) {
+			await writeTextFile(
+				artifactPath,
+				`${JSON.stringify({ ok: true }, null, 2)}\n`,
+			);
+		}
 		const reviewRequestPath = `${specPackRoot}/review-request.json`;
 		await writeTextFile(
 			reviewRequestPath,
@@ -41,19 +87,27 @@ describe("story-orchestrate resume CLI", () => {
 			)}\n`,
 		);
 
-		const run = await runSourceCli([
-			"story-orchestrate",
-			"resume",
-			"--spec-pack-root",
-			specPackRoot,
-			"--story-id",
-			storyId,
-			"--story-run-id",
-			acceptedAttempt.storyRunId,
-			"--review-request-file",
-			reviewRequestPath,
-			"--json",
-		]);
+		const run = await runSourceCli(
+			[
+				"story-orchestrate",
+				"resume",
+				"--spec-pack-root",
+				specPackRoot,
+				"--story-id",
+				storyId,
+				"--story-run-id",
+				acceptedAttempt.storyRunId,
+				"--review-request-file",
+				reviewRequestPath,
+				"--json",
+			],
+			{
+				env: {
+					PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+					...storyLead.env,
+				},
+			},
+		);
 		const envelope = parseJsonOutput<{
 			outcome: string;
 			result: {
