@@ -33,7 +33,7 @@ Make integration tests fail instead of skip, require `verify-all` for story comp
 
 **AC-5.4:** Integration tests do not skip or fallback internally.
 
-- **TC-5.4a: Missing integration flag does not silently pass integration suite**
+- **TC-5.4a: Missing integration prerequisites do not silently pass integration suite**
   - Given: The integration test command is invoked without required integration prerequisites
   - When: Integration tests run
   - Then: The tests fail with a clear prerequisite error rather than skipping
@@ -104,7 +104,7 @@ Runtime identity is a small cross-cutting helper attached to status/final artifa
 
 | TC | Test File / Check | Test Description |
 |----|-------------------|------------------|
-| TC-5.4a | `tests/integration/helpers.test.ts` or integration suite | missing integration flag/prereq fails when integration command is invoked |
+| TC-5.4a | `tests/integration/gating.test.ts` or integration suite | missing integration prerequisites fail when integration command is invoked |
 | TC-5.4b, TC-5.4c | `tests/integration/*.test.ts` | missing provider auth fails and no mock/partial fallback is used inside integration |
 | TC-5.5a | `tests/package/package-scripts.test.ts` | `verify-all` includes integration suite |
 | TC-5.5b | story DoD and `test-plan.md` | story validation requires `verify-all` |

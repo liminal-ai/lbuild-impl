@@ -133,7 +133,7 @@ describe("foundation", () => {
 		expect(workflow).toContain("npm run test:package");
 	});
 
-	test("integration workflow opts into LSPEC_INTEGRATION and runs verify-all", async () => {
+	test("integration workflow runs verify-all without a separate integration opt-in variable", async () => {
 		const workflow = await readFile(
 			join(ROOT, ".github", "workflows", "integration.yml"),
 			"utf8",
@@ -143,7 +143,7 @@ describe("foundation", () => {
 		expect(workflow).toContain("schedule:");
 		expect(workflow).toContain("runs-on: blacksmith-2vcpu-ubuntu-2404");
 		expect(workflow).not.toContain("runs-on: ubuntu-latest");
-		expect(workflow).toContain('LSPEC_INTEGRATION: "1"');
+		expect(workflow).not.toContain("LSPEC_INTEGRATION");
 		expect(workflow).toContain("npm run verify-all");
 	});
 });

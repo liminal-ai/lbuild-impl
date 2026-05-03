@@ -1,17 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { describe, test } from "vitest";
 
-import {
-	assertExecutableOnPath,
-	assertIntegrationPrerequisites,
-} from "./helpers";
+import { assertExecutableOnPath } from "./helpers";
 
-assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex", "copilot"] as const;
 
 describe("integration gating", () => {
-	test("TC-5.4a: integration project runs only after LSPEC_INTEGRATION is supplied explicitly", async () => {
-		expect(process.env.LSPEC_INTEGRATION).toBe("1");
-
+	test("TC-5.4a: integration project fails loudly when required provider executables are unavailable", async () => {
 		for (const provider of providers) {
 			await assertExecutableOnPath(provider);
 		}

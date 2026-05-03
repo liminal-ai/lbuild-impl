@@ -2,12 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import {
 	assertExecutableOnPath,
-	assertIntegrationPrerequisites,
 	assertProviderAuthAvailable,
 	runRealProviderStall,
 } from "./helpers";
 
-assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex"] as const;
 
 describe("provider stall coverage", () => {

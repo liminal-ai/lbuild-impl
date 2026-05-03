@@ -20,6 +20,18 @@ interface CodexAdapterOptions {
 	env?: Record<string, string | undefined>;
 }
 
+const CODEX_SANDBOX_MODES = new Set([
+	"read-only",
+	"workspace-write",
+	"danger-full-access",
+] as const);
+const CODEX_APPROVAL_POLICIES = new Set([
+	"untrusted",
+	"on-failure",
+	"on-request",
+	"never",
+] as const);
+
 export function createCodexAdapter(
 	options: CodexAdapterOptions = {},
 ): ProviderAdapter {
@@ -40,8 +52,10 @@ export function createCodexAdapter(
 					);
 				}
 
+				const codexGlobalArgs = buildCodexGlobalArgs(options.env);
 				const args = request.resumeSessionId
 					? [
+							...codexGlobalArgs,
 							"exec",
 							"resume",
 							"--json",
@@ -51,6 +65,7 @@ export function createCodexAdapter(
 							request.prompt,
 						]
 					: [
+							...codexGlobalArgs,
 							"exec",
 							"--json",
 							"-m",
@@ -126,7 +141,11 @@ export function createCodexAdapter(
 					sessionId,
 					parsedResult: parsed.parsedResult,
 					parseError: appendProviderOutputDiagnostics({
-						parseError: parsed.parseError,
+						parseError: formatCodexParseError({
+							parseError: parsed.parseError,
+							resumeSessionId: request.resumeSessionId,
+							hasResultSchema: Boolean(request.resultSchema),
+						}),
 						stdout: execution.stdout,
 						stderr: execution.stderr,
 						streamOutputPaths: request.streamOutputPaths,
@@ -145,6 +164,55 @@ async function readOptionalFile(path: string): Promise<string | undefined> {
 	} catch {
 		return undefined;
 	}
+}
+
+function buildCodexGlobalArgs(
+	env?: Record<string, string | undefined>,
+): string[] {
+	const sandboxMode = readCodexSetting(env, "LBUILD_IMPL_CODEX_SANDBOX_MODE");
+	const approvalPolicy = readCodexSetting(
+		env,
+		"LBUILD_IMPL_CODEX_APPROVAL_POLICY",
+	);
+	const args: string[] = [];
+
+	if (sandboxMode && CODEX_SANDBOX_MODES.has(sandboxMode as never)) {
+		args.push("-s", sandboxMode);
+	}
+	if (approvalPolicy && CODEX_APPROVAL_POLICIES.has(approvalPolicy as never)) {
+		args.push("-a", approvalPolicy);
+	}
+
+	return args;
+}
+
+function readCodexSetting(
+	env: Record<string, string | undefined> | undefined,
+	key: string,
+): string | undefined {
+	const value = env?.[key] ?? process.env[key];
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: undefined;
+}
+
+function formatCodexParseError(input: {
+	parseError?: string;
+	resumeSessionId?: string;
+	hasResultSchema: boolean;
+}): string | undefined {
+	if (!input.parseError) {
+		return undefined;
+	}
+
+	if (!input.resumeSessionId || !input.hasResultSchema) {
+		return input.parseError;
+	}
+
+	return [
+		"Codex resume schema drift: resume cannot receive --output-schema, so resumed output must still satisfy the original result contract.",
+		input.parseError,
+	].join(" ");
 }
 
 function parseCodexStructuredOutput<TResult>(input: {

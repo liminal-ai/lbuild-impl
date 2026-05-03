@@ -11,13 +11,8 @@ import {
 	writeRunConfig,
 } from "../support/test-helpers";
 import { seedPrimitiveArtifact } from "../support/story-orchestrate-fixtures";
-import {
-	assertExecutableOnPath,
-	assertIntegrationPrerequisites,
-	assertProviderAuthAvailable,
-} from "./helpers";
+import { assertExecutableOnPath, assertProviderAuthAvailable } from "./helpers";
 
-assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex"] as const;
 
 async function createStoryLeadSmokeFixture(

@@ -1,6 +1,6 @@
 {
   "name": "lbuild-impl",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Implementation runtime for Liminal Build — agentic impl/verify orchestration.",
   "type": "module",
   "main": "./dist/sdk/index.js",

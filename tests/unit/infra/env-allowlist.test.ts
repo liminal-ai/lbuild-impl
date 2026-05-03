@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 
 import { filterEnv } from "../../../src/infra/env-allowlist";
 
-test("TC-4.6a: provider env inherits only allowlisted keys plus overrides", () => {
+test("TC-6.3a: provider env inherits only allowlisted keys plus overrides", () => {
 	const filtered = filterEnv(
 		{
 			PATH: "/usr/bin",
@@ -34,7 +34,39 @@ test("TC-4.6a: provider env inherits only allowlisted keys plus overrides", () =
 	expect(filtered.CUSTOM_LEAK).toBeUndefined();
 });
 
-test("TC-4.6a: undefined overrides remove inherited allowlisted keys", () => {
+test("TC-6.3a: preserves Windows-required profile, shell, and temp variables", () => {
+	const filtered = filterEnv({
+		APPDATA: "C:\\Users\\Lee\\AppData\\Roaming",
+		LOCALAPPDATA: "C:\\Users\\Lee\\AppData\\Local",
+		USERPROFILE: "C:\\Users\\Lee",
+		HOMEDRIVE: "C:",
+		HOMEPATH: "\\Users\\Lee",
+		COMSPEC: "C:\\Windows\\System32\\cmd.exe",
+		PATHEXT: ".COM;.EXE;.BAT;.CMD",
+		SYSTEMROOT: "C:\\Windows",
+		WINDIR: "C:\\Windows",
+		TEMP: "C:\\Temp",
+		TMP: "C:\\Temp",
+		NODE_OPTIONS: "--inspect",
+	});
+
+	expect(filtered).toMatchObject({
+		APPDATA: "C:\\Users\\Lee\\AppData\\Roaming",
+		LOCALAPPDATA: "C:\\Users\\Lee\\AppData\\Local",
+		USERPROFILE: "C:\\Users\\Lee",
+		HOMEDRIVE: "C:",
+		HOMEPATH: "\\Users\\Lee",
+		COMSPEC: "C:\\Windows\\System32\\cmd.exe",
+		PATHEXT: ".COM;.EXE;.BAT;.CMD",
+		SYSTEMROOT: "C:\\Windows",
+		WINDIR: "C:\\Windows",
+		TEMP: "C:\\Temp",
+		TMP: "C:\\Temp",
+	});
+	expect(filtered.NODE_OPTIONS).toBeUndefined();
+});
+
+test("TC-6.3a: undefined overrides remove inherited allowlisted keys", () => {
 	const filtered = filterEnv(
 		{
 			PATH: "/usr/bin",
@@ -52,7 +84,7 @@ test("TC-4.6a: undefined overrides remove inherited allowlisted keys", () => {
 	expect(filtered.CODEX_TOKEN).toBe("override-token");
 });
 
-test("TC-4.6a: process.env-shaped overrides are treated as explicit caller intent", () => {
+test("TC-6.3a: process.env-shaped overrides are treated as explicit caller intent", () => {
 	const parent = {
 		PATH: "/usr/bin",
 		CODEX_TOKEN: "allowed-token",

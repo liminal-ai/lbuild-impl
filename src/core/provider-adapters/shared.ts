@@ -3,6 +3,11 @@ import { dirname } from "node:path";
 import { z } from "zod";
 import { filterEnv } from "../../infra/env-allowlist.js";
 import {
+	buildWindowsCommandShimInvocation,
+	isWindowsCommandShim,
+	resolveProviderExecutable,
+} from "../provider-executable.js";
+import {
 	createWriteStream,
 	getSpawnImplementation,
 	mkdir,
@@ -351,6 +356,7 @@ export async function runProviderCommand(params: {
 	startupTimeoutMs?: number;
 	silenceTimeoutMs?: number;
 	startupMode?: ProviderStartupMode;
+	platform?: NodeJS.Platform;
 	streamOutputPaths?: ProviderStreamOutputPaths;
 	lifecycleCallback?: (event: ProviderLifecycleEvent) => void | Promise<void>;
 }): Promise<{
@@ -381,6 +387,26 @@ export async function runProviderCommand(params: {
 		void params.lifecycleCallback?.(event);
 	};
 	const startupMode = params.startupMode ?? "require-output";
+	const mergedEnv = {
+		...process.env,
+		...params.env,
+	};
+	const resolvedExecutable = await resolveProviderExecutable({
+		executable: params.executable,
+		env: mergedEnv,
+		platform: params.platform,
+	});
+	const command =
+		process.platform === "win32" && isWindowsCommandShim(resolvedExecutable)
+			? buildWindowsCommandShimInvocation({
+					executable: resolvedExecutable,
+					args: params.args,
+					env: mergedEnv,
+				})
+			: {
+					file: resolvedExecutable,
+					args: params.args,
+				};
 
 	return await new Promise((resolveResult) => {
 		let stdout = "";
@@ -395,7 +421,7 @@ export async function runProviderCommand(params: {
 		let silenceTimeout: ReturnType<typeof setTimeout> | undefined;
 		let firstOutputReceived = false;
 
-		const child = getSpawnImplementation()(params.executable, params.args, {
+		const child = getSpawnImplementation()(command.file, command.args, {
 			cwd: params.cwd,
 			env: filterEnv(process.env, params.env),
 			stdio: ["pipe", "pipe", "pipe"],

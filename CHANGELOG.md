@@ -2,9 +2,13 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-05-03
+
 - Adds configurable `story_lead` provider composition for `story-orchestrate`, including Codex and Claude-backed smoke coverage before a default provider is locked in.
 - Refreshes the CLI-delivered `ls-impl` skill so caller-harness versus provider-harness language, story-id recovery, commit obligations, and cleanup handoff guidance match the shipped orchestration surface.
 - Updates README and current-state docs to describe `story-orchestrate`, caller-facing heartbeats, and story-lead runtime boundaries.
+- Hardens Windows compatibility with file URL path conversion, PATHEXT-aware provider lookup, Windows env preservation, and retry-on-lock atomic writes.
+- Adds Codex sandbox/approval policy guidance plus clearer resume schema-drift handling for retained runs.
 
 ## 0.3.0 - 2026-05-01
 

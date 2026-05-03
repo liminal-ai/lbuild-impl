@@ -4,6 +4,9 @@ import { dirname } from "node:path";
 import { mkdir, open, rename, rm } from "../core/runtime-deps.js";
 import { AtomicWriteError } from "../sdk/errors/classes.js";
 
+const WINDOWS_RENAME_RETRY_DELAYS_MS = [20, 50, 100] as const;
+const WINDOWS_TRANSIENT_RENAME_CODES = new Set(["EPERM", "EBUSY", "ENOTEMPTY"]);
+
 export async function writeAtomic(
 	path: string,
 	content: string | Buffer,
@@ -23,7 +26,7 @@ export async function writeAtomic(
 		await handle.close();
 		handle = undefined;
 
-		await rename(tempPath, path);
+		await renameWithRetry(tempPath, path);
 		await syncDirectory(directory);
 	} catch (error) {
 		await handle?.close().catch(() => undefined);
@@ -38,6 +41,49 @@ export async function writeAtomic(
 			},
 		);
 	}
+}
+
+async function renameWithRetry(sourcePath: string, destinationPath: string) {
+	let lastError: unknown;
+
+	for (
+		let attempt = 0;
+		attempt <= WINDOWS_RENAME_RETRY_DELAYS_MS.length;
+		attempt += 1
+	) {
+		try {
+			await rename(sourcePath, destinationPath);
+			return;
+		} catch (error) {
+			lastError = error;
+			if (
+				!isTransientWindowsRenameError(error) ||
+				attempt === WINDOWS_RENAME_RETRY_DELAYS_MS.length
+			) {
+				throw error;
+			}
+
+			await sleep(WINDOWS_RENAME_RETRY_DELAYS_MS[attempt] ?? 0);
+		}
+	}
+
+	throw lastError;
+}
+
+function isTransientWindowsRenameError(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		typeof error.code === "string" &&
+		WINDOWS_TRANSIENT_RENAME_CODES.has(error.code)
+	);
+}
+
+async function sleep(delayMs: number): Promise<void> {
+	await new Promise((resolve) => {
+		setTimeout(resolve, delayMs);
+	});
 }
 
 async function syncDirectory(directory: string): Promise<void> {

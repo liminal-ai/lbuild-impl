@@ -161,14 +161,6 @@ export async function assertExecutableOnPath(
 	);
 }
 
-export function assertIntegrationPrerequisites(): void {
-	if (process.env.LSPEC_INTEGRATION !== "1") {
-		throw new Error(
-			"Integration tests require LSPEC_INTEGRATION=1. The integration suite no longer skips internally when invoked without the prerequisite flag.",
-		);
-	}
-}
-
 function isProviderAuthFailure(envelope: {
 	status: string;
 	errors: Array<{ code: string; detail?: string; message: string }>;

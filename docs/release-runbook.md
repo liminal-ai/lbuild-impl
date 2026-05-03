@@ -72,7 +72,7 @@ Run one rehearsal before every live publish for a version.
 
 1. Update `package.json`, `CHANGELOG.md`, and `VERSION` to the target version.
 2. Run `npm run green-verify`.
-3. Run `npm run verify-all` if provider credentials are available locally.
+3. Run `npm run verify-all`. If provider credentials, binaries, or required environment are missing locally, treat that as a real release-blocking gate failure rather than a skip condition.
 4. Run `npm run pack-and-install-smoke`.
 5. Push the release branch or commit SHA you want to rehearse so GitHub Actions can check it out.
 6. Optionally create a local-only `v<version>` tag for shell checks. The workflow does not need the tag to exist on GitHub during rehearsal.

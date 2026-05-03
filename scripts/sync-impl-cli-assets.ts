@@ -1,7 +1,12 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+export function resolveRepoRootFromModuleUrl(moduleUrl: string): string {
+	return fileURLToPath(new URL("..", moduleUrl));
+}
+
+const ROOT = resolveRepoRootFromModuleUrl(import.meta.url);
 const PROMPTS_ROOT = join(ROOT, "src", "prompts");
 const SKILLS_ROOT = join(ROOT, "src", "skills");
 const OUTPUT_PATH = join(ROOT, "src", "core", "embedded-assets.generated.ts");
@@ -91,4 +96,14 @@ async function main(): Promise<void> {
 	);
 }
 
-await main();
+function isMainModule(): boolean {
+	if (!process.argv[1]) {
+		return false;
+	}
+
+	return resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+}
+
+if (isMainModule()) {
+	await main();
+}

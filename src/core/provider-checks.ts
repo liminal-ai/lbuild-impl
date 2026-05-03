@@ -1,4 +1,9 @@
 import { filterEnv } from "../infra/env-allowlist.js";
+import {
+	buildWindowsCommandShimInvocation,
+	isWindowsCommandShim,
+	resolveProviderExecutable,
+} from "./provider-executable.js";
 import type { ImplRunConfig, SecondaryHarness } from "./config-schema";
 import { resolveGitRepoRoot } from "./git-repo";
 import type { HarnessAvailability, ProviderMatrix } from "./result-contracts";
@@ -21,13 +26,34 @@ async function runCommand(params: {
 	cwd: string;
 	env?: Record<string, string | undefined>;
 	timeoutMs: number;
+	platform?: NodeJS.Platform;
 }) {
+	const mergedEnv = {
+		...process.env,
+		...params.env,
+	};
+	const resolvedExecutable = await resolveProviderExecutable({
+		executable: params.file,
+		env: mergedEnv,
+		platform: params.platform,
+	});
+	const command =
+		process.platform === "win32" && isWindowsCommandShim(resolvedExecutable)
+			? buildWindowsCommandShimInvocation({
+					executable: resolvedExecutable,
+					args: params.args,
+					env: mergedEnv,
+				})
+			: {
+					file: resolvedExecutable,
+					args: params.args,
+				};
 	try {
 		const result = await new Promise<{ stdout: string; stderr: string }>(
 			(resolveResult, reject) => {
 				getExecFileImplementation()(
-					params.file,
-					params.args,
+					command.file,
+					command.args,
 					{
 						cwd: params.cwd,
 						env: filterEnv(process.env, params.env),
@@ -178,6 +204,7 @@ async function checkHarnessAvailability(input: {
 	cwd: string;
 	env?: Record<string, string | undefined>;
 	timeoutMs: number;
+	platform?: NodeJS.Platform;
 }): Promise<HarnessAvailability> {
 	const executable = executableForHarness(input.harness);
 	if (!executable) {
@@ -196,6 +223,7 @@ async function checkHarnessAvailability(input: {
 		cwd: input.cwd,
 		env: input.env,
 		timeoutMs: input.timeoutMs,
+		platform: input.platform,
 	});
 	if (!version.success) {
 		return {
@@ -227,6 +255,7 @@ async function checkHarnessAvailability(input: {
 		cwd: input.cwd,
 		env: input.env,
 		timeoutMs: input.timeoutMs,
+		platform: input.platform,
 	});
 	if (!auth.success) {
 		const authOutcome = parseAuthCheckOutcome(auth.stderr);
@@ -298,6 +327,7 @@ export async function resolveProviderMatrix(input: {
 	config: ImplRunConfig;
 	env?: Record<string, string | undefined>;
 	timeoutMs?: number;
+	platform?: NodeJS.Platform;
 }): Promise<ProviderMatrix> {
 	const cwd =
 		(await resolveGitRepoRoot(input.specPackRoot)) ?? input.specPackRoot;
@@ -307,6 +337,7 @@ export async function resolveProviderMatrix(input: {
 		cwd,
 		env: input.env,
 		timeoutMs,
+		platform: input.platform,
 	});
 	const secondary: HarnessAvailability[] = [];
 
@@ -317,6 +348,7 @@ export async function resolveProviderMatrix(input: {
 				cwd,
 				env: input.env,
 				timeoutMs,
+				platform: input.platform,
 			}),
 		);
 	}

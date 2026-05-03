@@ -718,6 +718,92 @@ describe("provider availability checks", () => {
 		);
 	});
 
+	test("TC-6.5a applies configured Codex sandbox and approval policy flags to fresh and resumed executions", async () => {
+		const { createCodexAdapter } = await import(
+			"../../../src/core/provider-adapters/codex"
+		);
+
+		const providerBinDir = await createTempDir(
+			"provider-adapter-codex-sandbox-policy",
+		);
+		const sessionId = "codex-sandbox-policy-001";
+		const { env, logPath } = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: codexJsonlEventStream(
+						sessionId,
+						JSON.stringify({
+							ok: true,
+						}),
+					),
+					lastMessage: JSON.stringify({
+						ok: true,
+					}),
+				},
+				{
+					stdout: codexJsonlEventStream(
+						sessionId,
+						JSON.stringify({
+							ok: true,
+						}),
+					),
+					lastMessage: JSON.stringify({
+						ok: true,
+					}),
+				},
+			],
+		});
+		const adapter = createCodexAdapter({
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				LBUILD_IMPL_CODEX_SANDBOX_MODE: "workspace-write",
+				LBUILD_IMPL_CODEX_APPROVAL_POLICY: "never",
+				...env,
+			},
+		});
+
+		await adapter.execute({
+			prompt: '{"step":"implement"}',
+			cwd: ROOT,
+			model: "gpt-5.5",
+			reasoningEffort: "high",
+			timeoutMs: 1_000,
+			resultSchema: z.object({
+				ok: z.boolean(),
+			}),
+		});
+		await adapter.execute({
+			prompt: '{"step":"resume"}',
+			cwd: ROOT,
+			model: "gpt-5.5",
+			reasoningEffort: "high",
+			resumeSessionId: sessionId,
+			timeoutMs: 1_000,
+			resultSchema: z.object({
+				ok: z.boolean(),
+			}),
+		});
+
+		const invocations = await readJsonLines<{ args: string[] }>(logPath);
+		expect(invocations[0]?.args.slice(0, 5)).toEqual([
+			"-s",
+			"workspace-write",
+			"-a",
+			"never",
+			"exec",
+		]);
+		expect(invocations[1]?.args.slice(0, 6)).toEqual([
+			"-s",
+			"workspace-write",
+			"-a",
+			"never",
+			"exec",
+			"resume",
+		]);
+	});
+
 	test("uses an explicit Claude resume flag and never falls back to latest-session-by-cwd continuation", async () => {
 		const { createClaudeCodeAdapter } = await import(
 			"../../../src/core/provider-adapters/claude-code"
@@ -1181,6 +1267,59 @@ describe("provider availability checks", () => {
 		expect(execution.parsedResult).toEqual({
 			ok: true,
 		});
+	});
+
+	test("TC-6.6a/TC-6.6b reports Codex resume schema drift clearly when resumed output no longer matches the result contract", async () => {
+		const { createCodexAdapter } = await import(
+			"../../../src/core/provider-adapters/codex"
+		);
+
+		const providerBinDir = await createTempDir(
+			"provider-adapter-codex-resume-schema-drift",
+		);
+		const sessionId = "codex-resume-schema-drift-001";
+		const { env } = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: codexJsonlEventStream(
+						sessionId,
+						JSON.stringify({
+							ok: "not-a-boolean",
+						}),
+					),
+					lastMessage: JSON.stringify({
+						ok: "not-a-boolean",
+					}),
+				},
+			],
+		});
+		const adapter = createCodexAdapter({
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...env,
+			},
+		});
+
+		const execution = await adapter.execute({
+			prompt: '{"step":"resume"}',
+			cwd: ROOT,
+			model: "gpt-5.4",
+			reasoningEffort: "high",
+			resumeSessionId: sessionId,
+			timeoutMs: 1_000,
+			resultSchema: z.object({
+				ok: z.boolean(),
+			}),
+		});
+
+		expect(execution.parsedResult).toBeUndefined();
+		expect(execution.parseError).toContain("Codex resume schema drift");
+		expect(execution.parseError).toContain(
+			"resume cannot receive --output-schema",
+		);
+		expect(execution.parseError).toContain("root keys");
 	});
 
 	test("parses raw stdout when it is exactly the expected payload object", async () => {

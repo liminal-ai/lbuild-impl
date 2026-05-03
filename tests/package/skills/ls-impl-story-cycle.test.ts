@@ -148,6 +148,32 @@ describe("ls-impl story cycle skill docs", () => {
 		expect(chunk.stdout).toContain("story_orchestrate_ms");
 	});
 
+	test("TC-6.3b/TC-6.5b/TC-6.6a document Windows env preservation and Codex sandbox/resume guidance", {
+		timeout: 120_000,
+	}, async () => {
+		await runBuild();
+
+		const chunk = await runCli([
+			"skill",
+			"ls-impl",
+			"operations/31-provider-resolution.md",
+			"1",
+		]);
+
+		expect(chunk.code).toBe(0);
+		expect(chunk.stderr).toBe("");
+		expect(chunk.stdout).toContain("APPDATA");
+		expect(chunk.stdout).toContain("LOCALAPPDATA");
+		expect(chunk.stdout).toContain(
+			"LBUILD_IMPL_CODEX_SANDBOX_MODE=workspace-write",
+		);
+		expect(chunk.stdout).toContain("LBUILD_IMPL_CODEX_APPROVAL_POLICY=never");
+		expect(chunk.stdout).toContain(
+			"Codex resume does not accept `--output-schema`",
+		);
+		expect(chunk.stdout).toContain("Codex resume schema drift");
+	});
+
 	test("TC-3.1a ships the story-orchestrate state diagram and lifecycle vocabulary in the built skill docs", {
 		timeout: 120_000,
 	}, async () => {

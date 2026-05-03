@@ -109,6 +109,21 @@ Defaults to 3. Do not change unless the user asks.
 
 Write this file at the spec-pack root with the appropriate table's values filled in. `preflight` will validate the contents. Keep `story_lead_provider` explicit for `story-orchestrate`; that role is required for the composed story path and should not rely on an implied default provider. Use `story_lead_planner_ms` for one planner turn and `story_orchestrate_ms` for the whole `run` or `resume` invocation so timeout failures identify the budget that expired.
 
+## Windows and Codex notes
+
+Provider subprocesses keep the normal narrow allowlist, but Windows needs a few extra OS variables so provider CLIs can find their user profiles, shell shims, and temp directories. Expect `APPDATA`, `LOCALAPPDATA`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`, `COMSPEC`, `PATHEXT`, `SYSTEMROOT`, `WINDIR`, `TEMP`, and `TMP` to stay available when the runtime launches provider children.
+
+For unattended Codex implementation work, set these environment variables before running `story-orchestrate` or the lower-level story commands:
+
+```bash
+LBUILD_IMPL_CODEX_SANDBOX_MODE=workspace-write
+LBUILD_IMPL_CODEX_APPROVAL_POLICY=never
+```
+
+`workspace-write` is the recommended baseline because implementation needs to edit the repo. `read-only` will block normal story work. Use `danger-full-access` only when the surrounding environment is already externally sandboxed and you explicitly want Codex to bypass the narrower workspace guardrail.
+
+Codex resume does not accept `--output-schema`, so resumed turns rely on the same strict runtime parser instead. If the resumed payload drifts away from the required result contract, the runtime reports that as Codex resume schema drift rather than silently accepting malformed output.
+
 ## Where defaults are recorded
 
 After `preflight` returns `ready`, the resolved config, provider and harness availability matrix, active role defaults, and any degraded-diversity condition go into `team-impl-log.md` as part of setup step 5.

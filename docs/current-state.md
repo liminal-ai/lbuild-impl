@@ -45,7 +45,7 @@ The `skill` command is the exception to the envelope contract: it is a model-fac
 
 The implementation runtime writes durable artifacts under the spec pack. `inspect` is intentionally read-only. Mutating operations reserve artifact paths, write through atomic helpers, and preserve continuation/progress information where the operation supports it.
 
-Provider-backed operations support Claude Code, Codex, and Copilot through provider adapters. Primitive commands and `story-orchestrate` emit caller-facing heartbeat summaries on `stderr` while work is active, without changing the exact final JSON envelope on `stdout`. Real-provider tests are gated by `LSPEC_INTEGRATION=1` and the required provider credentials.
+Provider-backed operations support Claude Code, Codex, and Copilot through provider adapters. Primitive commands and `story-orchestrate` emit caller-facing heartbeat summaries on `stderr` while work is active, without changing the exact final JSON envelope on `stdout`. Real-provider integration runs are invoked through `npm run test:integration` and `npm run verify-all`; when provider binaries, auth, or required environment are missing, the integration suite fails loudly instead of skipping internally.
 
 ## Release Baseline
 
@@ -77,7 +77,7 @@ Common gates:
 - `npm run verify`: format check, lint, typecheck, captured baseline guard, and unit tests.
 - `npm run test:package`: package/release tests.
 - `npm run test:integration`: real-provider integration tests.
-- `npm run verify-all`: default, package, and integration gates.
+- `npm run verify-all`: default, package, and integration gates. This is the deep story-completion and epic-closeout gate.
 - `npm run pack-and-install-smoke`: local package install smoke.
 
 ## Read Path

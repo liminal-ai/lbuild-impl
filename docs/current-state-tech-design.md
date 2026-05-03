@@ -50,7 +50,7 @@ Current provider binaries:
 - Codex: `codex`
 - Copilot: standalone `copilot` CLI installed from `@github/copilot`
 
-Provider checks and adapters return structured runtime results. The real-provider integration gate installs the provider CLIs in GitHub Actions, authenticates Codex with `OPENAI_API_KEY`, and exercises the integration test suite with `LSPEC_INTEGRATION=1`.
+Provider checks and adapters return structured runtime results. The real-provider integration gate installs the provider CLIs in GitHub Actions, authenticates Codex with `OPENAI_API_KEY`, and exercises the integration test suite directly through `npm run verify-all`. If provider binaries, auth, or required environment are missing when integration is invoked, the suite fails loudly instead of skipping.
 
 ## Release Automation
 

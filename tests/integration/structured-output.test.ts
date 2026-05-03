@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import {
 	assertExecutableOnPath,
-	assertIntegrationPrerequisites,
 	assertProviderAuthAvailable,
 	assertPersistedEnvelope,
 	envelopeFailureSummary,
@@ -11,7 +10,6 @@ import {
 	sdkEnvelopeSchemas,
 } from "./helpers";
 
-assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex", "copilot"] as const;
 
 describe("real-provider structured-output coverage", () => {
@@ -37,6 +35,7 @@ describe("real-provider structured-output coverage", () => {
 	}
 
 	test("TC-5.1c: inspect structured output parses through the canonical SDK envelope schema", async () => {
+		await assertExecutableOnPath("codex");
 		const { envelope } = await runInspectStructuredOperation("codex");
 		expect(envelope.command).toBe("inspect");
 		expect(envelope.status).toBe("ok");

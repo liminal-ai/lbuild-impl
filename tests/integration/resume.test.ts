@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import {
 	assertExecutableOnPath,
-	assertIntegrationPrerequisites,
 	assertProviderAuthAvailable,
 	assertPersistedEnvelope,
 	envelopeFailureSummary,
@@ -10,7 +9,6 @@ import {
 	sdkEnvelopeSchemas,
 } from "./helpers";
 
-assertIntegrationPrerequisites();
 const providers = ["claude-code", "codex", "copilot"] as const;
 
 describe("real-provider resume coverage", () => {

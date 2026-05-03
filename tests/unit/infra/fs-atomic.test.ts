@@ -8,16 +8,18 @@ import { writeAtomic } from "../../../src/infra/fs-atomic";
 import { AtomicWriteError } from "../../../src/sdk/errors";
 import { createTempDir } from "../../support/test-helpers";
 
-test("TC-4.4a: writeAtomic preserves the prior file when rename fails", async () => {
+test("TC-6.4b: writeAtomic preserves the prior file when a non-transient rename failure occurs", async () => {
 	const tempDir = await createTempDir("fs-atomic-rename-failure");
 	const targetPath = join(tempDir, "artifact.json");
 	await writeFile(targetPath, '{"before":true}\n', "utf8");
+	let attempts = 0;
 
 	await expect(
 		withRuntimeDeps(
 			{
 				fs: {
 					rename: async () => {
+						attempts += 1;
 						const error = new Error("rename failed");
 						Object.assign(error, {
 							code: "EACCES",
@@ -31,12 +33,42 @@ test("TC-4.4a: writeAtomic preserves the prior file when rename fails", async ()
 	).rejects.toBeInstanceOf(AtomicWriteError);
 
 	expect(await readFile(targetPath, "utf8")).toBe('{"before":true}\n');
+	expect(attempts).toBe(1);
 	expect(
 		(await readdir(tempDir)).filter((name) => name.includes(".tmp.")),
 	).toEqual([]);
 });
 
-test("TC-4.4b: writeAtomic fsyncs and closes the temp file before rename", async () => {
+test("TC-6.4a: writeAtomic retries transient Windows rename failures before succeeding", async () => {
+	const tempDir = await createTempDir("fs-atomic-rename-retry");
+	const targetPath = join(tempDir, "artifact.json");
+	const events: string[] = [];
+	let attempts = 0;
+
+	await withRuntimeDeps(
+		{
+			fs: {
+				rename: async () => {
+					attempts += 1;
+					events.push(`rename-${attempts}`);
+					if (attempts < 3) {
+						const error = new Error("file busy");
+						Object.assign(error, {
+							code: attempts === 1 ? "EPERM" : "EBUSY",
+						});
+						throw error;
+					}
+				},
+			},
+		},
+		async () => writeAtomic(targetPath, '{"after":true}\n'),
+	);
+
+	expect(attempts).toBe(3);
+	expect(events).toEqual(["rename-1", "rename-2", "rename-3"]);
+});
+
+test("TC-6.4a: writeAtomic fsyncs and closes the temp file before rename", async () => {
 	const tempDir = await createTempDir("fs-atomic-durability-order");
 	const targetPath = join(tempDir, "artifact.json");
 	const events: string[] = [];
