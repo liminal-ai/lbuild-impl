@@ -56,6 +56,7 @@ export interface StoryRunLedger {
 		storyRunId: string,
 	): Promise<StoryRunAttemptRecord | null>;
 	readCurrentSnapshot(path: string): Promise<StoryRunCurrentSnapshot>;
+	readEventHistory(path: string): Promise<StoryRunEvent[]>;
 	readFinalPackage(path: string): Promise<StoryLeadFinalPackage>;
 	writeCurrentSnapshot(input: WriteCurrentSnapshotInput): Promise<void>;
 	appendEvent(input: AppendStoryRunEventInput): Promise<void>;
@@ -176,6 +177,19 @@ async function maybeReadJson<T>(path: string): Promise<T | null> {
 	return JSON.parse(trimmed) as T;
 }
 
+async function readJsonLines<T>(path: string): Promise<T[]> {
+	if (!(await pathExists(path))) {
+		return [];
+	}
+
+	const content = await readTextFile(path);
+	return content
+		.split(/\r?\n/u)
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0)
+		.map((line) => JSON.parse(line) as T);
+}
+
 function normalizeSnapshotForRead(
 	snapshot: StoryRunCurrentSnapshot,
 ): StoryRunCurrentSnapshot {
@@ -277,6 +291,11 @@ export function createStoryRunLedger(input: {
 			return normalizeSnapshotForRead(
 				storyRunCurrentSnapshotSchema.parse(payload),
 			);
+		},
+
+		async readEventHistory(path: string) {
+			const events = await readJsonLines<StoryRunEvent>(path);
+			return events.map((event) => storyRunEventSchema.parse(event));
 		},
 
 		async readFinalPackage(path: string) {

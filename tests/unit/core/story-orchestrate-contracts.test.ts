@@ -280,6 +280,10 @@ describe("story-orchestrate contracts", () => {
 			storyRunId: finalPackage.storyRunId,
 			currentSnapshotPath:
 				"/tmp/spec-pack/artifacts/00-foundation/story-orchestrate/current.json",
+			eventHistoryPath:
+				"/tmp/spec-pack/artifacts/00-foundation/story-orchestrate/events.jsonl",
+			statusArtifactPath:
+				"/tmp/spec-pack/artifacts/00-foundation/story-orchestrate/status.json",
 			currentSnapshot: {
 				storyRunId: finalPackage.storyRunId,
 				storyId: finalPackage.storyId,
@@ -315,7 +319,20 @@ describe("story-orchestrate contracts", () => {
 				updatedAt: "2026-05-01T00:00:00.000Z",
 			},
 			currentStatus: "needs-ruling",
+			lifecycleState: "terminal",
 			latestEventSequence: 3,
+			latestEvent: {
+				storyRunId: finalPackage.storyRunId,
+				sequence: 3,
+				timestamp: "2026-05-01T00:00:00.000Z",
+				type: "needs-ruling",
+				summary: "Waiting for caller ruling.",
+				artifact:
+					"/tmp/spec-pack/artifacts/00-foundation/story-orchestrate/final-package.json",
+			},
+			latestChildOperation: null,
+			elapsedTime: "0s",
+			terminalResult: "needs-ruling",
 			finalPackagePath:
 				"/tmp/spec-pack/artifacts/00-foundation/story-orchestrate/final-package.json",
 			finalPackage,
@@ -348,6 +365,60 @@ describe("story-orchestrate contracts", () => {
 				case: "invalid-story-run-id",
 				storyId: "00-foundation",
 				storyRunId: "00-foundation-story-run-999",
+			}),
+		).not.toThrow();
+	});
+
+	test("accepts interrupted run and resume result cases that surface final packages and recovery guidance", () => {
+		const interruptedFinalPackage = {
+			...createFinalPackage(),
+			outcome: "interrupted" as const,
+			replayBoundary: {
+				smallestSafeStep: "resume-current-attempt",
+				reasoning:
+					"The interrupted story-run should resume from the current durable snapshot.",
+				validArtifactPaths: [
+					"/tmp/spec-pack/artifacts/00-foundation/001-implementor.json",
+				],
+				requiresFreshStoryLeadSession: false,
+				requiresFreshChildProviderSession: false,
+			},
+		};
+
+		expect(() =>
+			storyOrchestrateRunResultSchema.parse({
+				case: "interrupted",
+				outcome: "interrupted",
+				storyId: "00-foundation",
+				storyRunId: "00-foundation-story-run-001",
+				currentSnapshotPath:
+					"/tmp/spec-pack/artifacts/00-foundation/story-lead/001-current.json",
+				eventHistoryPath:
+					"/tmp/spec-pack/artifacts/00-foundation/story-lead/001-events.jsonl",
+				finalPackagePath:
+					"/tmp/spec-pack/artifacts/00-foundation/story-lead/001-final-package.json",
+				finalPackage: interruptedFinalPackage,
+				recoveryGuidance:
+					"Use story-orchestrate resume to continue this interrupted attempt.",
+				latestEventSequence: 3,
+			}),
+		).not.toThrow();
+		expect(() =>
+			storyOrchestrateResumeResultSchema.parse({
+				case: "interrupted",
+				outcome: "interrupted",
+				storyId: "00-foundation",
+				storyRunId: "00-foundation-story-run-001",
+				currentSnapshotPath:
+					"/tmp/spec-pack/artifacts/00-foundation/story-lead/001-current.json",
+				eventHistoryPath:
+					"/tmp/spec-pack/artifacts/00-foundation/story-lead/001-events.jsonl",
+				finalPackagePath:
+					"/tmp/spec-pack/artifacts/00-foundation/story-lead/001-final-package.json",
+				finalPackage: interruptedFinalPackage,
+				recoveryGuidance:
+					"Use story-orchestrate resume to continue this interrupted attempt.",
+				latestEventSequence: 3,
 			}),
 		).not.toThrow();
 	});

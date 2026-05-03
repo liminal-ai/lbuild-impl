@@ -673,6 +673,18 @@ describe("story-lead loop", () => {
 
 		expect(runEnvelope.outcome).toBe("interrupted");
 		expect(currentSnapshot.status).toBe("interrupted");
+		expect(runEnvelope.result.finalPackagePath).toContain("final-package.json");
+		expect(runEnvelope.result.finalPackage).toEqual(
+			expect.objectContaining({
+				outcome: "interrupted",
+				replayBoundary: expect.objectContaining({
+					smallestSafeStep: "resume-current-attempt",
+				}),
+			}),
+		);
+		expect(runEnvelope.result.recoveryGuidance).toContain(
+			"story-orchestrate resume",
+		);
 		expect(events.map((event) => event.type)).toContain(
 			"story-lead-turn-limit",
 		);

@@ -114,6 +114,7 @@ export interface StoryLeadRuntimeResult {
 	eventHistoryPath: string;
 	finalPackagePath?: string;
 	finalPackage?: StoryLeadFinalPackage;
+	recoveryGuidance?: string;
 	latestEventSequence: number;
 	startedFromPrimitiveArtifacts?: string[];
 	acceptedReviewRequestArtifact?: ArtifactRef;
@@ -492,7 +493,7 @@ function replayBoundaryForFailure(input: {
 			return {
 				smallestSafeStep: "resume-current-attempt",
 				reasoning:
-					"The attempt stopped before terminal finalization, so the safest replay point is the current durable story-run snapshot.",
+					"The attempt was interrupted and recorded a terminal recovery package, so the safest replay point is the current durable story-run snapshot.",
 				validArtifactPaths: input.validArtifactPaths,
 				requiresFreshStoryLeadSession: false,
 				requiresFreshChildProviderSession: false,
@@ -1118,12 +1119,49 @@ export async function runStoryLead(
 				(artifact) => artifact.path,
 			),
 		});
+		const finalPackage = buildStoryLeadFinalPackage({
+			outcome: "interrupted",
+			storyId,
+			storyRunId: attemptPaths.storyRunId,
+			attempt: attemptPaths.attempt,
+			storyTitle,
+			implementedScope: params.currentSummary,
+			evidence: {
+				implementorArtifacts: filterArtifactsByKind(
+					currentSnapshot.latestArtifacts,
+					["implementor-result"],
+				),
+				selfReviewArtifacts: filterArtifactsByKind(
+					currentSnapshot.latestArtifacts,
+					["self-review-result"],
+				),
+				verifierArtifacts: filterArtifactsByKind(
+					currentSnapshot.latestArtifacts,
+					["verifier-result"],
+				),
+				quickFixArtifacts: filterArtifactsByKind(
+					currentSnapshot.latestArtifacts,
+					["quick-fix-result"],
+				),
+				callerInputArtifacts,
+			},
+			callerInputHistory,
+			replayBoundary,
+			continuationHandles: currentSnapshot.latestContinuationHandles,
+		});
+		await input.ledger.writeFinalPackage({
+			storyId,
+			storyRunId: attemptPaths.storyRunId,
+			finalPackage,
+		});
 		const interruptedEvent = buildEvent({
 			storyRunId: attemptPaths.storyRunId,
 			sequence: currentSnapshot.latestEventSequence + 1,
 			type: params.eventType,
 			summary: params.eventSummary,
+			artifact: attemptPaths.finalPackagePath,
 			data: {
+				terminalDecision: "interrupted",
 				recoveryBoundary: replayBoundary,
 				...(params.eventData ?? {}),
 			},
@@ -1133,10 +1171,17 @@ export async function runStoryLead(
 			status: "interrupted",
 			lifecycleState: "terminal",
 			currentSummary: params.currentSummary,
-			currentPhase: "interrupted",
+			currentPhase: "terminal",
+			latestArtifacts: mergeArtifacts(currentSnapshot.latestArtifacts, [
+				{
+					kind: "final-package",
+					path: attemptPaths.finalPackagePath,
+				},
+			]),
 			nextIntent: {
 				actionType: "replay-smallest-safe-step",
 				summary: params.nextIntentSummary,
+				artifactRef: attemptPaths.finalPackagePath,
 			},
 			replayBoundary,
 		});
@@ -1147,13 +1192,14 @@ export async function runStoryLead(
 					input.mode === "run"
 						? "story-orchestrate run"
 						: "story-orchestrate resume",
-				phase: "interrupted",
-				summary: `Incomplete run recorded for story ${storyId} as ${attemptPaths.storyRunId}. Resume is required because no final package was written.`,
+				phase: "terminal",
+				summary: `Story ${storyId} finished with outcome interrupted. storyRunId=${attemptPaths.storyRunId}. Final package: ${attemptPaths.finalPackagePath}`,
 				callerHarness: activeCallerHarness,
 				storyId,
 				storyRunId: attemptPaths.storyRunId,
 				statusArtifact: attemptPaths.currentSnapshotPath,
 				elapsedTime: formatElapsed(startedAtMs),
+				finalPackagePath: attemptPaths.finalPackagePath,
 			}),
 		);
 
@@ -1163,6 +1209,9 @@ export async function runStoryLead(
 			storyRunId: attemptPaths.storyRunId,
 			currentSnapshotPath: attemptPaths.currentSnapshotPath,
 			eventHistoryPath: attemptPaths.eventHistoryPath,
+			finalPackagePath: attemptPaths.finalPackagePath,
+			finalPackage,
+			recoveryGuidance: params.nextIntentSummary,
 			latestEventSequence: currentSnapshot.latestEventSequence,
 			startedFromPrimitiveArtifacts: input.startedFromPrimitiveArtifacts,
 			...(acceptedReviewRequestArtifact
@@ -1388,9 +1437,9 @@ export async function runStoryLead(
 				reason: "interrupted",
 				eventType: "interrupted",
 				eventSummary:
-					"Story orchestration stopped before a terminal final package was written.",
+					"Story orchestration was interrupted and recorded a terminal recovery package.",
 				currentSummary:
-					"Interrupted before a terminal final package was written.",
+					"Interrupted story-run is ready for explicit resume guidance.",
 				nextIntentSummary:
 					"Use story-orchestrate resume to continue this interrupted attempt.",
 			});
@@ -2215,7 +2264,7 @@ export async function runStoryLead(
 					currentSummary:
 						"Story-lead exceeded the bounded turn limit and must be resumed from durable state.",
 					nextIntentSummary:
-						"Resume the attempt from the latest durable ledger state with a fresh bounded turn.",
+						"Use story-orchestrate resume to continue this interrupted attempt from the latest durable ledger state.",
 				});
 			}
 		}

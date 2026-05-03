@@ -28,6 +28,7 @@ import {
 function resultArtifacts(input: {
 	currentSnapshotPath?: string;
 	eventHistoryPath?: string;
+	statusArtifactPath?: string;
 	finalPackagePath?: string;
 	acceptedReviewRequestArtifactPath?: string;
 	acceptedRulingArtifactPath?: string;
@@ -38,6 +39,9 @@ function resultArtifacts(input: {
 			: []),
 		...(input.eventHistoryPath
 			? [{ kind: "story-run-events", path: input.eventHistoryPath }]
+			: []),
+		...(input.statusArtifactPath
+			? [{ kind: "story-run-status", path: input.statusArtifactPath }]
 			: []),
 		...(input.finalPackagePath
 			? [{ kind: "story-run-final-package", path: input.finalPackagePath }]
@@ -93,6 +97,7 @@ function runAdditionalArtifacts(result: StoryOrchestrateRunResult) {
 			return resultArtifacts({
 				currentSnapshotPath: result.currentSnapshotPath,
 				eventHistoryPath: result.eventHistoryPath,
+				finalPackagePath: result.finalPackagePath,
 			});
 		case "existing-accepted-attempt":
 			return resultArtifacts({
@@ -123,6 +128,7 @@ function resumeAdditionalArtifacts(result: StoryOrchestrateResumeResult) {
 			return resultArtifacts({
 				currentSnapshotPath: result.currentSnapshotPath,
 				eventHistoryPath: result.eventHistoryPath,
+				finalPackagePath: result.finalPackagePath,
 				acceptedReviewRequestArtifactPath:
 					result.acceptedReviewRequestArtifact?.path,
 				acceptedRulingArtifactPath: result.acceptedRulingArtifact?.path,
@@ -134,6 +140,59 @@ function resumeAdditionalArtifacts(result: StoryOrchestrateResumeResult) {
 		default:
 			return [];
 	}
+}
+
+function formatElapsedTime(
+	startedAtIso: string,
+	finishedAtIso: string,
+): string {
+	const startedAt = Date.parse(startedAtIso);
+	const finishedAt = Date.parse(finishedAtIso);
+	const elapsedMs =
+		Number.isFinite(startedAt) && Number.isFinite(finishedAt)
+			? Math.max(0, finishedAt - startedAt)
+			: 0;
+	const totalSeconds = Math.floor(elapsedMs / 1_000);
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function deriveLatestChildOperation(input: {
+	currentChildOperation: {
+		command: string;
+		artifactPath?: string;
+		continuationHandleRef?: string;
+	} | null;
+	events: Array<{
+		type: string;
+		artifact?: string;
+		data?: Record<string, unknown>;
+	}>;
+}) {
+	if (input.currentChildOperation) {
+		return input.currentChildOperation;
+	}
+
+	for (let index = input.events.length - 1; index >= 0; index -= 1) {
+		const event = input.events[index];
+		if (event?.type !== "child-operation-completed") {
+			continue;
+		}
+
+		const command =
+			typeof event.data?.command === "string" ? event.data.command : null;
+		if (!command) {
+			continue;
+		}
+
+		return {
+			command,
+			...(event.artifact ? { artifactPath: event.artifact } : {}),
+		};
+	}
+
+	return null;
 }
 
 export async function storyOrchestrateRun(input: StoryOrchestrateRunInput) {
@@ -209,6 +268,11 @@ export async function storyOrchestrateRun(input: StoryOrchestrateRunInput) {
 							storyRunId: runtime.storyRunId,
 							currentSnapshotPath: runtime.currentSnapshotPath,
 							eventHistoryPath: runtime.eventHistoryPath,
+							finalPackagePath: runtime.finalPackagePath,
+							finalPackage: runtime.finalPackage,
+							recoveryGuidance:
+								runtime.recoveryGuidance ??
+								"Use story-orchestrate resume to continue this interrupted attempt.",
 							latestEventSequence: runtime.latestEventSequence,
 						});
 					}
@@ -439,6 +503,11 @@ export async function storyOrchestrateResume(
 							storyRunId: runtime.storyRunId,
 							currentSnapshotPath: runtime.currentSnapshotPath,
 							eventHistoryPath: runtime.eventHistoryPath,
+							finalPackagePath: runtime.finalPackagePath,
+							finalPackage: runtime.finalPackage,
+							recoveryGuidance:
+								runtime.recoveryGuidance ??
+								"Use story-orchestrate resume to continue this interrupted attempt.",
 							latestEventSequence: runtime.latestEventSequence,
 							...(runtime.acceptedReviewRequestArtifact
 								? {
@@ -545,15 +614,39 @@ export async function storyOrchestrateStatus(
 							`Unable to resolve story-run ${selection.storyRunId} for status.`,
 						);
 					}
+					const events = await ledger.readEventHistory(
+						attempt.eventHistoryPath,
+					);
+					const latestEvent = events.at(-1) ?? null;
+					const startedAtForElapsed =
+						events[0]?.timestamp ?? attempt.currentSnapshot.updatedAt;
+					const latestChildOperation = deriveLatestChildOperation({
+						currentChildOperation:
+							attempt.currentSnapshot.currentChildOperation,
+						events,
+					});
 
 					result = storyOrchestrateStatusResultSchema.parse({
 						case: "single-attempt",
 						storyId: parsedInput.storyId,
 						storyRunId: attempt.storyRunId,
 						currentSnapshotPath: attempt.currentSnapshotPath,
+						eventHistoryPath: attempt.eventHistoryPath,
+						statusArtifactPath: attempt.progressStatusPath,
 						currentSnapshot: attempt.currentSnapshot,
 						currentStatus: attempt.currentSnapshot.status,
+						lifecycleState: attempt.currentSnapshot.lifecycleState,
 						latestEventSequence: attempt.currentSnapshot.latestEventSequence,
+						latestEvent,
+						latestChildOperation,
+						elapsedTime: formatElapsedTime(
+							startedAtForElapsed,
+							attempt.currentSnapshot.updatedAt,
+						),
+						...(attempt.currentSnapshot.lifecycleState === "terminal" &&
+						attempt.currentSnapshot.status !== "running"
+							? { terminalResult: attempt.currentSnapshot.status }
+							: {}),
 						...(attempt.finalPackage
 							? {
 									finalPackagePath: attempt.finalPackagePath,
@@ -576,6 +669,8 @@ export async function storyOrchestrateStatus(
 					result.case === "single-attempt"
 						? resultArtifacts({
 								currentSnapshotPath: result.currentSnapshotPath,
+								eventHistoryPath: result.eventHistoryPath,
+								statusArtifactPath: result.statusArtifactPath,
 								finalPackagePath: result.finalPackagePath,
 							})
 						: [],

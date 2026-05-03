@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { createStoryRunLedger } from "../../../src/core/story-run-ledger";
 import { storyOrchestrateStatus } from "../../../src/sdk/operations/story-orchestrate";
 import {
 	createStoryOrchestrateSpecPack,
@@ -14,8 +15,17 @@ describe("story-orchestrate status sdk operation", () => {
 		const attempt = await seedStoryRunAttempt({
 			specPackRoot,
 			storyId,
-			status: "interrupted",
-			finalPackageOutcome: "interrupted",
+			status: "running",
+			updatedAt: "2026-05-01T00:05:00.000Z",
+			currentChildOperation: {
+				command: "story-implement",
+				artifactPath: `${specPackRoot}/artifacts/${storyId}/001-implementor.json`,
+			},
+			event: {
+				type: "child-operation-started",
+				summary: "Story implementor started and is still running.",
+				timestamp: "2026-05-01T00:00:00.000Z",
+			},
 		});
 
 		const envelope = await storyOrchestrateStatus({
@@ -28,7 +38,18 @@ describe("story-orchestrate status sdk operation", () => {
 			expect.objectContaining({
 				case: "single-attempt",
 				storyRunId: attempt.storyRunId,
-				currentStatus: "interrupted",
+				currentStatus: "running",
+				lifecycleState: "awaiting_story_lead_action",
+				latestEvent: expect.objectContaining({
+					type: "child-operation-started",
+				}),
+				latestChildOperation: expect.objectContaining({
+					command: "story-implement",
+				}),
+				statusArtifactPath: expect.stringContaining(
+					"story-lead/progress/001-story-lead.status.json",
+				),
+				elapsedTime: "5m 0s",
 			}),
 		);
 	});
@@ -91,8 +112,98 @@ describe("story-orchestrate status sdk operation", () => {
 			expect.objectContaining({
 				case: "single-attempt",
 				currentStatus: "accepted",
+				terminalResult: "accepted",
 				finalPackage: expect.objectContaining({
 					outcome: "accepted",
+				}),
+			}),
+		);
+	});
+
+	test("preserves the latest bounded child operation for terminal status reads", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-orchestrate-sdk-status-terminal-child-operation",
+		);
+		const implementorArtifact = `${specPackRoot}/artifacts/${storyId}/001-implementor.json`;
+		const attempt = await seedStoryRunAttempt({
+			specPackRoot,
+			storyId,
+			status: "accepted",
+			finalPackageOutcome: "accepted",
+			updatedAt: "2026-05-01T00:01:00.000Z",
+			latestArtifacts: [
+				{
+					kind: "implementor-result",
+					path: implementorArtifact,
+				},
+			],
+		});
+		const ledger = createStoryRunLedger({
+			specPackRoot,
+			storyId,
+		});
+		const snapshot = await ledger.readCurrentSnapshot(
+			attempt.currentSnapshotPath,
+		);
+
+		await ledger.writeCurrentSnapshot({
+			storyId,
+			storyRunId: attempt.storyRunId,
+			snapshot: {
+				...snapshot,
+				latestEventSequence: 2,
+				currentChildOperation: null,
+				latestArtifacts: [
+					...snapshot.latestArtifacts,
+					{
+						kind: "final-package",
+						path: attempt.finalPackagePath,
+					},
+				],
+				updatedAt: "2026-05-01T00:01:00.000Z",
+			},
+		});
+		await Bun.write(
+			attempt.eventHistoryPath,
+			[
+				JSON.stringify({
+					storyRunId: attempt.storyRunId,
+					sequence: 1,
+					timestamp: "2026-05-01T00:00:00.000Z",
+					type: "child-operation-completed",
+					summary: "story-implement produced a ready-for-verification result.",
+					artifact: implementorArtifact,
+					data: {
+						command: "story-implement",
+						actionType: "run-implement",
+						outcome: "ready-for-verification",
+						status: "ok",
+					},
+				}),
+				JSON.stringify({
+					storyRunId: attempt.storyRunId,
+					sequence: 2,
+					timestamp: "2026-05-01T00:01:00.000Z",
+					type: "accepted",
+					summary: `Story-lead finalized ${attempt.storyRunId} with outcome accepted.`,
+					artifact: attempt.finalPackagePath,
+				}),
+			].join("\n") + "\n",
+		);
+
+		const envelope = await storyOrchestrateStatus({
+			specPackRoot,
+			storyId,
+			storyRunId: attempt.storyRunId,
+		});
+
+		expect(envelope.result).toEqual(
+			expect.objectContaining({
+				case: "single-attempt",
+				terminalResult: "accepted",
+				latestChildOperation: expect.objectContaining({
+					command: "story-implement",
+					artifactPath: implementorArtifact,
 				}),
 			}),
 		);

@@ -78,7 +78,7 @@ describe("story-orchestrate run CLI", () => {
 		);
 	});
 
-	test("TC-2.8b records incomplete runs without a terminal final package", async () => {
+	test("TC-2.8b records interrupted terminal runs with a final package and recovery guidance", async () => {
 		const specPackRoot = await createSpecPack(
 			"story-orchestrate-run-incomplete",
 		);
@@ -104,14 +104,33 @@ describe("story-orchestrate run CLI", () => {
 				case: string;
 				storyRunId: string;
 				currentSnapshotPath: string;
-				finalPackagePath?: string;
+				finalPackagePath: string;
+				finalPackage: {
+					outcome: string;
+					replayBoundary: {
+						smallestSafeStep: string;
+					} | null;
+				};
+				recoveryGuidance: string;
 			};
 		}>(run.stdout);
 
 		expect(run.exitCode).toBe(2);
 		expect(envelope.result.case).toBe("interrupted");
-		expect(envelope.result.finalPackagePath).toBeUndefined();
-		expect(run.stderr).toContain("Incomplete run recorded");
+		expect(envelope.result.finalPackagePath).toContain("final-package.json");
+		expect(envelope.result.finalPackage.outcome).toBe("interrupted");
+		expect(envelope.result.finalPackage.replayBoundary).toEqual(
+			expect.objectContaining({
+				smallestSafeStep: "resume-current-attempt",
+			}),
+		);
+		expect(envelope.result.recoveryGuidance).toContain(
+			"story-orchestrate resume",
+		);
+		expect(run.stderr).toContain("finished with outcome interrupted");
+		expect(run.stderr).toContain(
+			`Final package: ${envelope.result.finalPackagePath}`,
+		);
 
 		const status = await runSourceCli([
 			"story-orchestrate",
@@ -128,7 +147,11 @@ describe("story-orchestrate run CLI", () => {
 				storyRunId: string;
 				currentStatus: string;
 				currentSnapshotPath: string;
-				finalPackagePath?: string;
+				terminalResult?: string;
+				finalPackagePath: string;
+				finalPackage: {
+					outcome: string;
+				};
 			};
 		}>(status.stdout);
 
@@ -138,8 +161,12 @@ describe("story-orchestrate run CLI", () => {
 				storyRunId: envelope.result.storyRunId,
 				currentStatus: "interrupted",
 				currentSnapshotPath: envelope.result.currentSnapshotPath,
+				terminalResult: "interrupted",
+				finalPackagePath: envelope.result.finalPackagePath,
+				finalPackage: expect.objectContaining({
+					outcome: "interrupted",
+				}),
 			}),
 		);
-		expect(statusEnvelope.result.finalPackagePath).toBeUndefined();
 	});
 });

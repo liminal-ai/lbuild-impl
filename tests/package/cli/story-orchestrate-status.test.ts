@@ -14,8 +14,19 @@ describe("story-orchestrate status CLI", () => {
 		const attempt = await seedStoryRunAttempt({
 			specPackRoot,
 			storyId,
-			status: "interrupted",
-			finalPackageOutcome: "interrupted",
+			status: "running",
+			updatedAt: "2026-05-01T00:05:00.000Z",
+			currentSummary: "Implementor handoff is still running.",
+			currentPhase: "story-implement",
+			currentChildOperation: {
+				command: "story-implement",
+				artifactPath: `${specPackRoot}/artifacts/${storyId}/001-implementor.json`,
+			},
+			event: {
+				type: "child-operation-started",
+				summary: "Story implementor started and is still running.",
+				timestamp: "2026-05-01T00:00:00.000Z",
+			},
 		});
 
 		const run = await runSourceCli([
@@ -32,7 +43,17 @@ describe("story-orchestrate status CLI", () => {
 				case: string;
 				storyRunId: string;
 				currentStatus: string;
+				lifecycleState: string;
 				latestEventSequence: number;
+				latestEvent: {
+					type: string;
+					summary: string;
+				} | null;
+				latestChildOperation: {
+					command: string;
+				} | null;
+				statusArtifactPath: string;
+				elapsedTime: string;
 			};
 		}>(run.stdout);
 
@@ -41,8 +62,20 @@ describe("story-orchestrate status CLI", () => {
 			expect.objectContaining({
 				case: "single-attempt",
 				storyRunId: attempt.storyRunId,
-				currentStatus: "interrupted",
+				currentStatus: "running",
+				lifecycleState: "awaiting_story_lead_action",
 				latestEventSequence: 1,
+				latestEvent: expect.objectContaining({
+					type: "child-operation-started",
+					summary: "Story implementor started and is still running.",
+				}),
+				latestChildOperation: expect.objectContaining({
+					command: "story-implement",
+				}),
+				statusArtifactPath: expect.stringContaining(
+					"story-lead/progress/001-story-lead.status.json",
+				),
+				elapsedTime: "5m 0s",
 			}),
 		);
 	});
@@ -121,6 +154,7 @@ describe("story-orchestrate status CLI", () => {
 				case: string;
 				storyRunId: string;
 				currentStatus: string;
+				terminalResult?: string;
 				finalPackagePath?: string;
 				finalPackage?: { outcome: string };
 			};
@@ -132,9 +166,73 @@ describe("story-orchestrate status CLI", () => {
 				case: "single-attempt",
 				storyRunId: attempt.storyRunId,
 				currentStatus: "accepted",
+				terminalResult: "accepted",
 				finalPackagePath: attempt.finalPackagePath,
 				finalPackage: expect.objectContaining({
 					outcome: "accepted",
+				}),
+			}),
+		);
+	});
+
+	test("reports interrupted terminal status with a final package and recovery guidance", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-orchestrate-status-interrupted",
+		);
+		const attempt = await seedStoryRunAttempt({
+			specPackRoot,
+			storyId,
+			status: "interrupted",
+			finalPackageOutcome: "interrupted",
+		});
+
+		const run = await runSourceCli([
+			"story-orchestrate",
+			"status",
+			"--spec-pack-root",
+			specPackRoot,
+			"--story-id",
+			storyId,
+			"--json",
+		]);
+		const envelope = parseJsonOutput<{
+			result: {
+				case: string;
+				currentStatus: string;
+				terminalResult?: string;
+				finalPackagePath?: string;
+				finalPackage?: {
+					outcome: string;
+					replayBoundary: {
+						smallestSafeStep: string;
+					} | null;
+				};
+				currentSnapshot: {
+					nextIntent: {
+						summary: string;
+					} | null;
+				};
+			};
+		}>(run.stdout);
+
+		expect(run.exitCode).toBe(0);
+		expect(envelope.result).toEqual(
+			expect.objectContaining({
+				case: "single-attempt",
+				currentStatus: "interrupted",
+				terminalResult: "interrupted",
+				finalPackagePath: attempt.finalPackagePath,
+				finalPackage: expect.objectContaining({
+					outcome: "interrupted",
+					replayBoundary: expect.objectContaining({
+						smallestSafeStep: "resume-current-attempt",
+					}),
+				}),
+				currentSnapshot: expect.objectContaining({
+					nextIntent: expect.objectContaining({
+						summary:
+							"Use story-orchestrate resume to continue this interrupted attempt.",
+					}),
 				}),
 			}),
 		);

@@ -21,7 +21,26 @@ function renderStatusSummary(
 		return [
 			`${envelope.command}: ${envelope.outcome}`,
 			`story-run: ${envelope.result.storyRunId}`,
+			`lifecycle-state: ${envelope.result.lifecycleState}`,
 			`status: ${envelope.result.currentStatus}`,
+			...(envelope.result.terminalResult
+				? [`terminal-result: ${envelope.result.terminalResult}`]
+				: []),
+			...(envelope.result.latestEvent
+				? [
+						`latest-event: ${envelope.result.latestEvent.type} - ${envelope.result.latestEvent.summary}`,
+					]
+				: []),
+			...(envelope.result.latestChildOperation
+				? [
+						`latest-child-operation: ${envelope.result.latestChildOperation.command}`,
+					]
+				: []),
+			`status-artifact: ${envelope.result.statusArtifactPath}`,
+			`elapsed: ${envelope.result.elapsedTime}`,
+			...(envelope.result.finalPackagePath
+				? [`final-package: ${envelope.result.finalPackagePath}`]
+				: []),
 		].join("\n");
 	}
 

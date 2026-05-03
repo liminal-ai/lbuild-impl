@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createStoryRunLedger } from "../../src/core/story-run-ledger.js";
 import type {
 	ArtifactRef,
+	CurrentChildOperation,
 	StoryLeadFinalPackage,
 	StoryRunCurrentSnapshot,
 	StoryRunStatus,
@@ -89,6 +90,20 @@ function buildFinalPackage(input: {
 	attempt: number;
 	outcome: StoryLeadFinalPackage["outcome"];
 }): StoryLeadFinalPackage {
+	const interruptedReplayBoundary =
+		input.outcome === "interrupted"
+			? {
+					smallestSafeStep: "resume-current-attempt" as const,
+					reasoning:
+						"Interrupted fixtures should surface the same resume guidance as the production runtime.",
+					validArtifactPaths: [
+						`/tmp/spec-pack/artifacts/${input.storyId}/001-implementor.json`,
+					],
+					requiresFreshStoryLeadSession: false,
+					requiresFreshChildProviderSession: false,
+				}
+			: null;
+
 	return {
 		outcome: input.outcome,
 		storyRunId: input.storyRunId,
@@ -141,9 +156,14 @@ function buildFinalPackage(input: {
 			reviewRequests: [],
 			rulings: [],
 		},
-		replayBoundary: null,
+		replayBoundary: interruptedReplayBoundary,
 		logHandoff: {
-			recommendedState: "BETWEEN_STORIES",
+			recommendedState:
+				input.outcome === "needs-ruling"
+					? "NEEDS_RULING"
+					: input.outcome === "accepted"
+						? "BETWEEN_STORIES"
+						: "STORY_IN_PROGRESS",
 			recommendedCurrentStory: input.storyId,
 			recommendedCurrentPhase: "story-orchestrate",
 			continuationHandles: {},
@@ -169,7 +189,13 @@ function buildFinalPackage(input: {
 				latestActualTotal: 12,
 			},
 			commitReadiness: {
-				state: "ready-for-impl-lead-commit",
+				...(input.outcome === "accepted"
+					? { state: "ready-for-impl-lead-commit" as const }
+					: {
+							state: "not-ready" as const,
+							reason:
+								"Interrupted and non-accepted fixtures require explicit impl-lead follow-up before commit.",
+						}),
 			},
 			openRisks: [],
 		},
@@ -179,7 +205,12 @@ function buildFinalPackage(input: {
 			cleanupRequired: false,
 		},
 		rulingRequest: null,
-		recommendedImplLeadAction: "accept",
+		recommendedImplLeadAction:
+			input.outcome === "accepted"
+				? "accept"
+				: input.outcome === "needs-ruling"
+					? "ask-ruling"
+					: "reopen",
 	};
 }
 
@@ -213,6 +244,18 @@ export async function seedStoryRunAttempt(input: {
 	finalPackage?: StoryLeadFinalPackage | null;
 	latestEventSequence?: number;
 	latestArtifacts?: ArtifactRef[];
+	currentSummary?: string;
+	currentPhase?: string;
+	currentChildOperation?: CurrentChildOperation | null;
+	nextIntent?: StoryRunCurrentSnapshot["nextIntent"];
+	replayBoundary?: StoryRunCurrentSnapshot["replayBoundary"];
+	event?: {
+		type?: string;
+		summary?: string;
+		artifact?: string;
+		data?: Record<string, unknown>;
+		timestamp?: string;
+	};
 }) {
 	const ledger = createStoryRunLedger({
 		specPackRoot: input.specPackRoot,
@@ -225,10 +268,11 @@ export async function seedStoryRunAttempt(input: {
 		attempt: attemptPaths.attempt,
 		status: input.status,
 		lifecycleState: lifecycleStateForStatus(input.status),
-		currentSummary: `Fixture status ${input.status}.`,
+		currentSummary: input.currentSummary ?? `Fixture status ${input.status}.`,
 		currentPhase:
-			input.status === "running" ? "story-orchestrate-run" : "terminal",
-		currentChildOperation: null,
+			input.currentPhase ??
+			(input.status === "running" ? "story-orchestrate-run" : "terminal"),
+		currentChildOperation: input.currentChildOperation ?? null,
 		latestArtifacts: input.latestArtifacts ?? [],
 		latestContinuationHandles: {},
 		latestEventSequence: input.latestEventSequence ?? 1,
@@ -236,8 +280,30 @@ export async function seedStoryRunAttempt(input: {
 			reviewRequests: [],
 			rulings: [],
 		},
-		nextIntent: null,
-		replayBoundary: null,
+		nextIntent:
+			input.nextIntent ??
+			(input.status === "interrupted"
+				? {
+						actionType: "replay-smallest-safe-step",
+						summary:
+							"Use story-orchestrate resume to continue this interrupted attempt.",
+						artifactRef: attemptPaths.finalPackagePath,
+					}
+				: null),
+		replayBoundary:
+			input.replayBoundary ??
+			(input.status === "interrupted"
+				? {
+						smallestSafeStep: "resume-from-last-valid-artifact",
+						reasoning:
+							"Interrupted fixture should expose the same replay guidance surface as the runtime.",
+						validArtifactPaths: (input.latestArtifacts ?? []).map(
+							(artifact) => artifact.path,
+						),
+						requiresFreshStoryLeadSession: false,
+						requiresFreshChildProviderSession: true,
+					}
+				: null),
 		updatedAt: input.updatedAt ?? "2026-05-01T00:00:00.000Z",
 	};
 	await ledger.writeCurrentSnapshot({
@@ -251,9 +317,23 @@ export async function seedStoryRunAttempt(input: {
 		event: {
 			storyRunId: attemptPaths.storyRunId,
 			sequence: input.latestEventSequence ?? 1,
-			timestamp: input.updatedAt ?? "2026-05-01T00:00:00.000Z",
-			type: input.status,
-			summary: `Fixture event for ${input.status}.`,
+			timestamp:
+				input.event?.timestamp ?? input.updatedAt ?? "2026-05-01T00:00:00.000Z",
+			type: input.event?.type ?? input.status,
+			summary: input.event?.summary ?? `Fixture event for ${input.status}.`,
+			...((input.event?.artifact ??
+			(input.status !== "running" && input.finalPackage !== null
+				? attemptPaths.finalPackagePath
+				: undefined))
+				? {
+						artifact:
+							input.event?.artifact ??
+							(input.status !== "running" && input.finalPackage !== null
+								? attemptPaths.finalPackagePath
+								: undefined),
+					}
+				: {}),
+			...(input.event?.data ? { data: input.event.data } : {}),
 		},
 	});
 

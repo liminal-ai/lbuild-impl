@@ -1,8 +1,13 @@
+import { join } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import { createStoryRunLedger } from "../../../src/core/story-run-ledger";
 import { readJsonLines } from "../../support/test-helpers";
-import { createStoryOrchestrateSpecPack } from "../../support/story-orchestrate-fixtures";
+import {
+	createStoryOrchestrateSpecPack,
+	seedStoryRunAttempt,
+} from "../../support/story-orchestrate-fixtures";
 
 describe("story-run ledger", () => {
 	test("TC-2.4a, TC-2.4b, and TC-2.4c persist current snapshot, append-only events, and a terminal final package", async () => {
@@ -287,5 +292,132 @@ describe("story-run ledger", () => {
 
 		expect(snapshot).not.toHaveProperty("storyLeadSession");
 		expect(snapshot.lifecycleState).toBe("awaiting_story_lead_action");
+	});
+
+	test("TC-3.6a and TC-3.6b preserve prior final packages and record reopen rationale as new history", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-run-ledger-reopen-history",
+		);
+		const priorAttempt = await seedStoryRunAttempt({
+			specPackRoot,
+			storyId,
+			status: "accepted",
+			finalPackageOutcome: "accepted",
+			updatedAt: "2026-05-01T00:00:00.000Z",
+		});
+		const ledger = createStoryRunLedger({
+			specPackRoot,
+			storyId,
+		});
+		const reopenedAttempt = await ledger.createAttempt();
+		const priorFinalPackageArtifact = {
+			kind: "prior-final-package",
+			path: priorAttempt.finalPackagePath,
+		} as const;
+
+		await ledger.writeCurrentSnapshot({
+			storyId,
+			storyRunId: reopenedAttempt.storyRunId,
+			snapshot: {
+				storyRunId: reopenedAttempt.storyRunId,
+				storyId,
+				attempt: reopenedAttempt.attempt,
+				status: "running",
+				lifecycleState: "awaiting_story_lead_action",
+				currentSummary: "Reopened attempt is waiting for story-lead action.",
+				currentPhase: "reopen-accepted-attempt",
+				currentChildOperation: null,
+				latestArtifacts: [priorFinalPackageArtifact],
+				latestContinuationHandles: {},
+				latestEventSequence: 1,
+				callerInputHistory: {
+					reviewRequests: [
+						{
+							source: "impl-lead",
+							decision: "reopen",
+							summary: "Please reopen and add the missing receipt notes.",
+							items: [
+								{
+									id: "review-001",
+									severity: "major",
+									concern: "Receipt notes are missing.",
+									requiredResponse: "Add the missing receipt notes.",
+								},
+							],
+						},
+					],
+					rulings: [],
+				},
+				nextIntent: {
+					actionType: "reopen-story-run",
+					summary: "Review the reopen rationale before the next planner turn.",
+					artifactRef: priorAttempt.finalPackagePath,
+				},
+				replayBoundary: null,
+				updatedAt: "2026-05-01T00:05:00.000Z",
+			},
+		});
+		await ledger.appendEvent({
+			storyId,
+			storyRunId: reopenedAttempt.storyRunId,
+			event: {
+				storyRunId: reopenedAttempt.storyRunId,
+				sequence: 1,
+				timestamp: "2026-05-01T00:05:00.000Z",
+				type: "story-run-reopened",
+				summary:
+					"Story orchestration reopened the accepted attempt for additional work.",
+				artifact: join(
+					specPackRoot,
+					"artifacts",
+					storyId,
+					"story-lead",
+					"002-review-request-001.json",
+				),
+				data: {
+					reopenedFromStoryRunId: priorAttempt.storyRunId,
+					priorFinalPackagePath: priorAttempt.finalPackagePath,
+					rationale: "Please reopen and add the missing receipt notes.",
+				},
+			},
+		});
+
+		const attempts = await ledger.listAttempts();
+		const reopenedEvents = await ledger.readEventHistory(
+			reopenedAttempt.eventHistoryPath,
+		);
+
+		expect(attempts).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					storyRunId: priorAttempt.storyRunId,
+					finalPackagePath: priorAttempt.finalPackagePath,
+					finalPackage: expect.objectContaining({
+						outcome: "accepted",
+					}),
+				}),
+				expect.objectContaining({
+					storyRunId: reopenedAttempt.storyRunId,
+					currentSnapshot: expect.objectContaining({
+						latestArtifacts: expect.arrayContaining([
+							expect.objectContaining({
+								kind: "prior-final-package",
+								path: priorAttempt.finalPackagePath,
+							}),
+						]),
+					}),
+				}),
+			]),
+		);
+		expect(reopenedEvents).toEqual([
+			expect.objectContaining({
+				type: "story-run-reopened",
+				data: expect.objectContaining({
+					reopenedFromStoryRunId: priorAttempt.storyRunId,
+					priorFinalPackagePath: priorAttempt.finalPackagePath,
+					rationale: "Please reopen and add the missing receipt notes.",
+				}),
+			}),
+		]);
 	});
 });

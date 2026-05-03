@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { readTextFile } from "../../../src/core/fs-utils";
 import type { StoryLeadFinalPackage } from "../../../src/core/story-orchestrate-contracts";
 import {
+	storyOrchestrateRun,
 	storyOrchestrateResume,
 	storyOrchestrateStatus,
 } from "../../../src/sdk/operations/story-orchestrate";
@@ -117,6 +118,93 @@ describe("story-orchestrate resume sdk operation", () => {
 			recommendedImplLeadAction: "ask-ruling",
 		};
 	}
+
+	test("surfaces interrupted terminal packages and recovery guidance for both run and resume flows", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-orchestrate-sdk-resume-interrupted-terminal",
+		);
+		const priorIncompleteMode =
+			process.env.LBUILD_IMPL_STORY_ORCHESTRATE_INCOMPLETE;
+		process.env.LBUILD_IMPL_STORY_ORCHESTRATE_INCOMPLETE = "1";
+
+		try {
+			const runEnvelope = await storyOrchestrateRun({
+				specPackRoot,
+				storyId,
+			});
+
+			if (!runEnvelope.result || runEnvelope.result.case !== "interrupted") {
+				throw new Error(
+					"Expected the initial run to return an interrupted result.",
+				);
+			}
+
+			expect(runEnvelope.result.finalPackagePath).toContain(
+				"final-package.json",
+			);
+			expect(runEnvelope.result.finalPackage).toEqual(
+				expect.objectContaining({
+					outcome: "interrupted",
+					replayBoundary: expect.objectContaining({
+						smallestSafeStep: "resume-current-attempt",
+					}),
+				}),
+			);
+			expect(runEnvelope.result.recoveryGuidance).toContain(
+				"story-orchestrate resume",
+			);
+
+			const resumeEnvelope = await storyOrchestrateResume({
+				specPackRoot,
+				storyId,
+				storyRunId: runEnvelope.result.storyRunId,
+			});
+
+			expect(resumeEnvelope.outcome).toBe("interrupted");
+			expect(resumeEnvelope.result).toEqual(
+				expect.objectContaining({
+					case: "interrupted",
+					storyRunId: runEnvelope.result.storyRunId,
+					finalPackagePath: expect.stringContaining("final-package.json"),
+					recoveryGuidance: expect.stringContaining("story-orchestrate resume"),
+					finalPackage: expect.objectContaining({
+						outcome: "interrupted",
+					}),
+				}),
+			);
+
+			const statusEnvelope = await storyOrchestrateStatus({
+				specPackRoot,
+				storyId,
+				storyRunId: runEnvelope.result.storyRunId,
+			});
+
+			expect(statusEnvelope.result).toEqual(
+				expect.objectContaining({
+					case: "single-attempt",
+					currentStatus: "interrupted",
+					terminalResult: "interrupted",
+					finalPackagePath: expect.stringContaining("final-package.json"),
+					finalPackage: expect.objectContaining({
+						outcome: "interrupted",
+					}),
+					currentSnapshot: expect.objectContaining({
+						nextIntent: expect.objectContaining({
+							summary:
+								"Use story-orchestrate resume to continue this interrupted attempt.",
+						}),
+					}),
+				}),
+			);
+		} finally {
+			if (typeof priorIncompleteMode === "string") {
+				process.env.LBUILD_IMPL_STORY_ORCHESTRATE_INCOMPLETE =
+					priorIncompleteMode;
+			} else {
+				delete process.env.LBUILD_IMPL_STORY_ORCHESTRATE_INCOMPLETE;
+			}
+		}
+	});
 
 	test("preserves prior artifact history and appends monotonic events when resuming an existing attempt", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
