@@ -53,6 +53,62 @@ function runCli(args: string[]) {
 }
 
 describe("ls-impl story cycle skill docs", () => {
+	test("TC-1.1a/TC-1.1b/TC-1.2b/TC-1.3a/TC-1.3b/TC-1.5a/TC-1.5b/TC-5.6a/TC-5.6b ship story-orchestrate as the default path and primitives as lower-level tools", {
+		timeout: 120_000,
+	}, async () => {
+		await runBuild();
+
+		const chunk = await runCli([
+			"skill",
+			"ls-impl",
+			"phases/20-story-cycle.md",
+			"1",
+		]);
+
+		expect(chunk.code).toBe(0);
+		expect(chunk.stderr).toBe("");
+		expect(chunk.stdout).toContain(
+			"The normal happy path is `story-orchestrate`",
+		);
+		expect(chunk.stdout).toContain("## Local CLI on this branch");
+		expect(chunk.stdout).toContain("npm exec -- lbuild-impl ...");
+		expect(chunk.stdout).toContain("node dist/bin/lbuild-impl.js ...");
+		expect(chunk.stdout).toContain(
+			"switch to the local CLI instead of treating the missing global command as a product defect.",
+		);
+		expect(chunk.stdout).toContain("Route on the terminal `status`:");
+		expect(chunk.stdout).toContain(
+			"review the final package, run the final story gate yourself, complete the receipt, make the story commit, and only then accept the story.",
+		);
+		expect(chunk.stdout).toContain(
+			"pause and supply the caller decision the story-lead asked for.",
+		);
+		expect(chunk.stdout).toContain(
+			"Primitive story operations stay available, but they are lower-level tools rather than the default story workflow:",
+		);
+		expect(chunk.stdout).toContain(
+			"`story-implement` — initial retained implementor pass",
+		);
+		expect(chunk.stdout).toContain(
+			"`story-continue` — same-session implementor follow-up",
+		);
+		expect(chunk.stdout).toContain(
+			"`story-self-review` — explicit same-session implementor review before verification",
+		);
+		expect(chunk.stdout).toContain(
+			"`story-verify` — retained verifier passes for one story",
+		);
+		expect(chunk.stdout).toContain(
+			"`quick-fix` — narrow, story-agnostic correction",
+		);
+		expect(chunk.stdout).toContain("bun run test -- --run <files>");
+		expect(chunk.stdout).toContain("npm run test:package -- --run <files>");
+		expect(chunk.stdout).toContain(
+			"Do not use raw `bun test`; it bypasses the repo Vitest configuration and is not an accepted verification path.",
+		);
+		expect(chunk.stdout).not.toContain("## 1. Launch implementation");
+	});
+
 	test("TC-3.1a ships the story-orchestrate state diagram and lifecycle vocabulary in the built skill docs", {
 		timeout: 120_000,
 	}, async () => {

@@ -8,7 +8,7 @@ export default defineCommand({
 	meta: {
 		name: "story-orchestrate",
 		description:
-			"Run, resume, or inspect one durable story-lead attempt for a story.",
+			"Run, resume, or inspect one story through the composed story-lead loop.",
 	},
 	subCommands: {
 		run: storyOrchestrateRunCommand,

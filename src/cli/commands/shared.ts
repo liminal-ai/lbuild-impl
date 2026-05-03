@@ -54,7 +54,8 @@ export const storyOrchestrateSharedArgs = {
 	},
 	config: {
 		type: "string",
-		description: "Explicit run-config file relative to the spec-pack root",
+		description:
+			"Explicit run-config file relative to the spec-pack root; story-orchestrate requires story_lead_provider",
 	},
 	json: {
 		type: "boolean",

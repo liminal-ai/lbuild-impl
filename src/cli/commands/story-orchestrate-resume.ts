@@ -90,7 +90,8 @@ function buildInvalidResumeEnvelope(input: {
 export default defineCommand({
 	meta: {
 		name: "resume",
-		description: "Resume or reopen a durable story-lead attempt for one story.",
+		description:
+			"Resume or reopen one story in the composed story-lead loop from durable state.",
 	},
 	args: {
 		...storyOrchestrateSharedArgs,

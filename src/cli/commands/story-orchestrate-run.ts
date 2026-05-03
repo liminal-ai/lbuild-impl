@@ -32,7 +32,7 @@ export default defineCommand({
 	meta: {
 		name: "run",
 		description:
-			"Run a story-lead for one story after orienting from existing story artifacts.",
+			"Run one story through the composed story-lead loop after orienting from durable story artifacts.",
 	},
 	args: {
 		...storyOrchestrateSharedArgs,

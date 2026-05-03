@@ -1,8 +1,17 @@
 # Story Cycle
 
-Stage 3 runs once per story in order. For each story you launch implementation, run explicit self-review, review verification, route any follow-up, run the final story gate yourself, record a receipt, and advance. Repeat until every story is accepted.
+Stage 3 runs once per story in order. The normal happy path is `story-orchestrate`: launch one story, let the runtime drive the bounded child operations, review the final package, then finish impl-lead acceptance yourself. Primitive commands remain available as lower-level building blocks, recovery tools, and direct diagnosis tools when you need them.
 
-If you use `story-orchestrate`, treat it as a story-lead helper for one story rather than as outer acceptance authority. Story-lead can own the internal story loop and hand back a final package, but impl-lead still reviews that package, finishes the receipt, makes the story commit, and decides whether the story is actually accepted.
+Treat `story-orchestrate` as a story-lead helper for one story rather than as outer acceptance authority. Story-lead can own the internal story loop and hand back a final package, but impl-lead still reviews that package, finishes the receipt, makes the story commit, and decides whether the story is actually accepted.
+
+## Local CLI on this branch
+
+When you are dogfooding unreleased commands on the current branch, use the local CLI:
+
+- `npm exec -- lbuild-impl ...`
+- `node dist/bin/lbuild-impl.js ...`
+
+The global `lbuild-impl` on `PATH` is the published package. If a command exists locally but not globally, switch to the local CLI instead of treating the missing global command as a product defect.
 
 ## Story-orchestrate lifecycle
 
@@ -68,85 +77,86 @@ When you background any provider-backed CLI call in this phase, keep following i
 - Heartbeats are summaries on `stderr`, not replacements for the final JSON envelope on `stdout`.
 - The caller harness receives the heartbeat. The provider harness may be different.
 
-## 1. Launch implementation
+## Normal story path
+
+Start normal story work with `story-orchestrate`. The runtime will call lower-level story operations for you one bounded step at a time and persist the durable story-run record between planner turns.
+
+## 1. Launch story-orchestrate
 
 ```bash
-lbuild-impl story-implement --spec-pack-root <path> --story-id <story-id> --json
+lbuild-impl story-orchestrate run --spec-pack-root <path> --story-id <story-id> --json
 ```
 
-Route on the outcome:
+Route on the terminal `status`:
 
-- **`ready-for-verification`** — proceed to step 2 with the returned continuation handle.
-- **`needs-followup-fix`** — consult `21-verification-and-fix-routing.md`.
-- **`needs-human-ruling`** — surface to the user; do not auto-fix.
-- **`blocked`** — inspect blockers, resolve, retry.
+- **`accepted`** — review the final package, run the final story gate yourself, complete the receipt, make the story commit, and only then accept the story.
+- **`needs-ruling`** — pause and supply the caller decision the story-lead asked for.
+- **`blocked`** — inspect the named blocker, resolve the prerequisite or escalate it, then resume or rerun intentionally.
+- **`failed`** — inspect the runtime or planner failure evidence, fix the root cause, then rerun or resume from a clean decision.
+- **`interrupted`** — resume from the last durable checkpoint instead of reconstructing progress from memory.
 
-Record the implementor result artifact path.
-
-## 2. Launch self-review
+## 2. Poll status while the attempt is active
 
 ```bash
-lbuild-impl story-self-review --spec-pack-root <path> --story-id <story-id> --provider <provider> --session-id <id> --json
+lbuild-impl story-orchestrate status --spec-pack-root <path> --story-id <story-id> --json
 ```
 
-Route on the outcome:
+Use `status`, `lifecycleState`, the latest event, and the final package path to decide whether to keep waiting, resume, or move into impl-lead acceptance work.
 
-- **`ready-for-verification`** — proceed to step 3.
-- **`needs-followup-fix`** — consult `21-verification-and-fix-routing.md`.
-- **`needs-human-ruling`** — surface to the user; do not auto-fix.
-- **`blocked`** — inspect blockers, resolve, retry.
+## 3. Resume or reopen intentionally
 
-Record the self-review batch artifact path.
-
-## 3. Launch verification
-
-Initial verifier pass:
+Resume from the durable story-run record when the story-lead asks for review input or a ruling, or when an interrupted attempt needs to continue from disk:
 
 ```bash
-lbuild-impl story-verify --spec-pack-root <path> --story-id <story-id> --json
+lbuild-impl story-orchestrate resume --spec-pack-root <path> --story-id <story-id> [--story-run-id <id>] [--review-request-file <path>] [--ruling-file <path>] --json
 ```
 
-Follow-up verifier pass:
+Use `spec-pack-root + story-id` as the stable recovery key when the story run id is missing. Resume only the smallest missing bounded step that is not already backed by a valid durable artifact.
+
+## 4. Finish impl-lead acceptance yourself
+
+`story-orchestrate` does not accept the story for you. After an `accepted` terminal result:
+
+- run the story gate command recorded in `team-impl-log.md`
+- compare the cumulative test baseline to the prior accepted baseline
+- write the receipt in `team-impl-log.md`
+- record every unresolved finding disposition
+- land the story commit before advancing
+
+Include these receipt fields when story-lead was used:
+
+- any `story-orchestrate` final package, `logHandoff`, and story receipt draft paths
+- any `accepted-risk` or `defer` items; carry them forward into the cleanup batch before epic verification
+
+The commit is part of acceptance: until it lands, the story remains in `accept` phase and recovery should expect the commit before advancing.
+
+For targeted test slices while diagnosing story work, use the command for the Vitest project you need:
 
 ```bash
-lbuild-impl story-verify --spec-pack-root <path> --story-id <story-id> --provider <provider> --session-id <id> (--response-file <path> | --response-text <text>) [--orchestrator-context-file <path> | --orchestrator-context-text <text>] --json
+# default/unit slices
+bun run test -- --run <files>
+
+# package slices
+npm run test:package -- --run <files>
 ```
 
-Route on the outcome:
+Do not use raw `bun test`; it bypasses the repo Vitest configuration and is not an accepted verification path.
 
-- **`pass`** — proceed to step 4.
-- **`revise`** — consult `21-verification-and-fix-routing.md`; rerun verification after fixes.
-- **`block`** — inspect blockers, resolve, retry.
+## Lower-level story operations
 
-The first verifier pass starts the retained verifier session for the story. Follow-up verifier passes resume that same session with the implementor's response and any orchestrator framing needed for convergence. Record the verifier result artifact path and the retained verifier continuation handle.
+Primitive story operations stay available, but they are lower-level tools rather than the default story workflow:
 
-## 4. Run the final story gate
+- `story-implement` — initial retained implementor pass when you intentionally bypass or reconstruct part of the composed loop
+- `story-continue` — same-session implementor follow-up after verifier findings or recovery
+- `story-self-review` — explicit same-session implementor review before verification
+- `story-verify` — retained verifier passes for one story
+- `quick-fix` — narrow, story-agnostic correction when the smallest safe fix does not need the full story session
 
-The CLI does not accept stories. You do. Run the story gate command recorded in `team-impl-log.md`:
+Reach for these primitives when:
 
-- Passes cleanly — proceed to step 5.
-- Fails — route the failure through `21-verification-and-fix-routing.md`; treat it as a finding, not a pause.
-
-## 5. Compare cumulative baselines
-
-Compare the current total test count to the prior accepted baseline (in the log). A count below expectation is a regression; block acceptance and investigate before proceeding.
-
-## 6. Record the receipt and accept
-
-Write a pre-acceptance receipt into `team-impl-log.md` with:
-
-- story id and title
-- implementor result artifact path
-- verifier result artifact paths
-- any `story-orchestrate` final package, `logHandoff`, and story receipt draft paths when story-lead was used
-- story gate command run and its result
-- disposition (`fixed`, `accepted-risk`, or `defer`) for every unresolved finding
-- open risks remaining after acceptance
-- cumulative baseline before and after this story
-
-Once the receipt is complete and every finding has a disposition, commit the story's changes. The commit is part of acceptance: until it lands, the story remains in `accept` phase and recovery will expect the commit before advancing.
-
-If story-lead carried `accepted-risk` or `defer` items, preserve them in the receipt and carry them forward into the cleanup batch before epic verification.
+- `story-orchestrate` status or final evidence shows a specific missing bounded step
+- you are doing direct diagnosis or maintainer recovery work
+- the user explicitly asks for the lower-level operation
 
 ## Advance
 

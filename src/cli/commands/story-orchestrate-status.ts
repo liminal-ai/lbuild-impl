@@ -31,7 +31,8 @@ function renderStatusSummary(
 export default defineCommand({
 	meta: {
 		name: "status",
-		description: "Read durable story-lead status by story id or story run id.",
+		description:
+			"Read durable status for one story in the composed story-lead loop.",
 	},
 	args: {
 		...storyOrchestrateSharedArgs,

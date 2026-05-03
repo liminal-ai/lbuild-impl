@@ -34,11 +34,10 @@ WHAT IT EXPECTS
 BASIC PROCESS
   1. inspect      Read the pack without changing it.
   2. preflight    Check config, git state, gates, and provider readiness.
-  3. implement    Run story-implement for one story.
-  3a. orchestrate Use story-orchestrate for durable story-level run/recovery.
-  4. continue     Use story-continue when an envelope returns a continuation handle.
-  5. verify       Run story-self-review and story-verify.
-  6. fix          Use quick-fix for bounded follow-up fixes.
+  3. orchestrate  Run story-orchestrate for the normal one-story execution path.
+  4. recover      Use status/resume and primitive story commands only for lower-level recovery or diagnosis.
+  5. verify       Review the final package, then run your story gate and acceptance steps.
+  6. fix          Use quick-fix only for bounded lower-level follow-up fixes.
   7. summarize    Use epic-verify and epic-synthesize to assess epic completion.
 
   Repeat steps 3-6 per story. Run cleanup only when batch prepared.
@@ -62,11 +61,11 @@ COMMANDS
   inspect             Read-only spec-pack inspection. Best first command.
   preflight           Validate config, gates, git state, and provider readiness.
 
-  story-implement     Start implementation for one story.
-  story-orchestrate   Run, resume, or inspect one durable story-lead attempt.
-  story-continue      Continue a retained story implementation session.
-  story-self-review   Review retained story session's work.
-  story-verify        Start or continue story verification.
+  story-orchestrate   Run, resume, or inspect one durable story-lead attempt through the composed story-lead loop.
+  story-implement     Lower-level initial implementation pass for one story.
+  story-continue      Lower-level retained story implementation follow-up.
+  story-self-review   Lower-level retained story self-review pass.
+  story-verify        Lower-level start or continue story verification.
 
   quick-fix           Apply one bounded fix from task description.
   epic-verify         Run epic-level verification.
@@ -102,7 +101,7 @@ SAFETY
 EXAMPLES
   lbuild-impl inspect --spec-pack-root ./docs/spec-build/epics/my-epic --json
   lbuild-impl preflight --spec-pack-root ./docs/spec-build/epics/my-epic --json
-  lbuild-impl story-implement --spec-pack-root ./docs/spec-build/epics/my-epic --story-id 00-foundation --json
+  lbuild-impl story-orchestrate run --spec-pack-root ./docs/spec-build/epics/my-epic --story-id 00-foundation --json
 
 SUGGESTED AGENT START
   1. Run inspect --json.

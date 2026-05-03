@@ -20,6 +20,8 @@ Check secondary harness availability in this order and stop at the first availab
 
 The result selects which defaults table applies below. Record a degraded-diversity condition in `team-impl-log.md` when neither is available.
 
+For normal story work, `story-orchestrate` is the happy path and it requires an explicit `story_lead_provider` entry in `impl-run.config.json`. Each planner turn returns one bounded action, so keep the story-lead provider choice explicit in the config you write during setup.
+
 ## Role defaults
 
 Each role gets a `secondary_harness`, `model`, and `reasoning_effort`. The epic verifier rows (`epic_verifier_1`, `epic_verifier_2`) correspond to entries in the `epic_verifiers` array with labels `epic-verifier-1` and `epic-verifier-2`; all other rows are top-level config keys.
@@ -103,7 +105,7 @@ Defaults to 3. Do not change unless the user asks.
 }
 ```
 
-Write this file at the spec-pack root with the appropriate table's values filled in. `preflight` will validate the contents. Keep `story_lead_provider` explicit when you want `story-orchestrate` to launch a provider-backed story-lead, because the package has not committed to a hidden default provider yet. `story_lead` still parses as a deprecated compatibility alias for older packs.
+Write this file at the spec-pack root with the appropriate table's values filled in. `preflight` will validate the contents. Keep `story_lead_provider` explicit for `story-orchestrate`; that role is required for the composed story path and should not rely on an implied default provider.
 
 ## Where defaults are recorded
 
