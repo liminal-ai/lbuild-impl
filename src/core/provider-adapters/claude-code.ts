@@ -52,7 +52,8 @@ export function createClaudeCodeAdapter(
 				env: options.env,
 				timeoutMs: request.timeoutMs,
 				startupTimeoutMs: request.startupTimeoutMs,
-				silenceTimeoutMs: request.silenceTimeoutMs,
+				silenceTimeoutMs: undefined,
+				startupMode: "spawn-is-healthy",
 				streamOutputPaths: request.streamOutputPaths,
 				lifecycleCallback: request.lifecycleCallback,
 			});

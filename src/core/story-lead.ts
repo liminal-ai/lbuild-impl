@@ -8,6 +8,13 @@ import { storyImplement } from "../sdk/operations/story-implement.js";
 import { storySelfReview } from "../sdk/operations/story-self-review.js";
 import { storyVerify } from "../sdk/operations/story-verify.js";
 import {
+	buildRuntimeProgressPaths,
+	buildStreamOutputPaths,
+	nextArtifactPath,
+	nextGroupedArtifactPath,
+	nextGroupedArtifactPaths,
+} from "./artifact-writer.js";
+import {
 	type ImplRunConfig,
 	loadRunConfig,
 	requireStoryLeadProviderConfig,
@@ -23,6 +30,7 @@ import {
 	createStoryHeartbeatEmitter,
 	resolveCallerHeartbeatOptions,
 } from "./heartbeat.js";
+import { type RuntimeStatus, runtimeStatusSchema } from "./runtime-progress.js";
 import {
 	createProviderAdapter,
 	type ProviderExecutionResult,
@@ -308,6 +316,198 @@ function filterArtifactsByKind(
 	kinds: string[],
 ): ArtifactRef[] {
 	return artifacts.filter((artifact) => kinds.includes(artifact.kind));
+}
+
+interface ChildOperationArtifacts {
+	artifactPath: string;
+	runtimeProgressPaths: ReturnType<typeof buildRuntimeProgressPaths>;
+	streamOutputPaths: ReturnType<typeof buildStreamOutputPaths>;
+	passArtifactPaths?: string[];
+}
+
+interface ChildProcessCleanupRecord {
+	type: "child-process-stopped" | "child-process-abandoned";
+	summary: string;
+	data: Record<string, unknown>;
+}
+
+async function allocateChildOperationArtifacts(input: {
+	specPackRoot: string;
+	storyId: string;
+	command:
+		| "story-implement"
+		| "story-continue"
+		| "story-self-review"
+		| "story-verify"
+		| "quick-fix";
+	selfReviewPasses?: number;
+}): Promise<ChildOperationArtifacts> {
+	if (input.command === "story-self-review") {
+		const passCount = Math.max(1, input.selfReviewPasses ?? 1);
+		const allocatedPaths = await nextGroupedArtifactPaths(
+			input.specPackRoot,
+			input.storyId,
+			[
+				...Array.from(
+					{
+						length: passCount,
+					},
+					(_, index) => `self-review-pass-${index + 1}`,
+				),
+				"self-review-batch",
+			],
+		);
+		const artifactPath = allocatedPaths[allocatedPaths.length - 1];
+		if (typeof artifactPath !== "string") {
+			throw new Error("Unable to allocate story-self-review batch artifact.");
+		}
+
+		return {
+			artifactPath,
+			runtimeProgressPaths: buildRuntimeProgressPaths(artifactPath),
+			streamOutputPaths: buildStreamOutputPaths(artifactPath),
+			passArtifactPaths: allocatedPaths.slice(0, -1),
+		};
+	}
+
+	const artifactPath =
+		input.command === "quick-fix"
+			? await nextArtifactPath(input.specPackRoot, "quick-fix")
+			: await nextGroupedArtifactPath(
+					input.specPackRoot,
+					input.storyId,
+					(
+						{
+							"story-implement": "implementor",
+							"story-continue": "continue",
+							"story-verify": "verify",
+						} as const
+					)[input.command],
+				);
+
+	return {
+		artifactPath,
+		runtimeProgressPaths: buildRuntimeProgressPaths(artifactPath),
+		streamOutputPaths: buildStreamOutputPaths(artifactPath),
+	};
+}
+
+async function readChildRuntimeStatus(
+	artifactPath: string,
+): Promise<RuntimeStatus | null> {
+	const statusPath = buildRuntimeProgressPaths(artifactPath).statusPath;
+	if (!(await pathExists(statusPath))) {
+		return null;
+	}
+
+	try {
+		return runtimeStatusSchema.parse(
+			JSON.parse(await readTextFile(statusPath)) as unknown,
+		);
+	} catch {
+		return null;
+	}
+}
+
+function isProcessMissing(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		typeof error.code === "string" &&
+		error.code === "ESRCH"
+	);
+}
+
+function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return !isProcessMissing(error);
+	}
+}
+
+async function stopTrackedChildProcess(pid: number): Promise<boolean> {
+	try {
+		process.kill(pid, "SIGTERM");
+	} catch (error) {
+		if (isProcessMissing(error)) {
+			return true;
+		}
+		return false;
+	}
+
+	for (let attempt = 0; attempt < 4; attempt += 1) {
+		await sleep(50);
+		if (!isProcessAlive(pid)) {
+			return true;
+		}
+	}
+
+	try {
+		process.kill(pid, "SIGKILL");
+	} catch (error) {
+		if (isProcessMissing(error)) {
+			return true;
+		}
+		return false;
+	}
+
+	for (let attempt = 0; attempt < 4; attempt += 1) {
+		await sleep(50);
+		if (!isProcessAlive(pid)) {
+			return true;
+		}
+	}
+
+	return !isProcessAlive(pid);
+}
+
+async function cleanupTrackedChildOperation(input: {
+	storyId: string;
+	storyRunId: string;
+	childOperation: StoryRunCurrentSnapshot["currentChildOperation"];
+}): Promise<ChildProcessCleanupRecord | null> {
+	const artifactPath = input.childOperation?.artifactPath;
+	if (!artifactPath) {
+		return null;
+	}
+
+	const runtimeStatus = await readChildRuntimeStatus(artifactPath);
+	const statusArtifactPath = buildRuntimeProgressPaths(artifactPath).statusPath;
+	const cleanupTimestamp = nowIso();
+	const cleanupData: Record<string, unknown> = {
+		storyId: input.storyId,
+		storyRunId: input.storyRunId,
+		command: input.childOperation?.command,
+		artifactPath,
+		statusArtifactPath,
+		cleanedUpAt: cleanupTimestamp,
+		...(runtimeStatus
+			? {
+					provider: runtimeStatus.provider,
+					pid: runtimeStatus.pid,
+					streamPaths: runtimeStatus.streamPaths,
+				}
+			: {}),
+	};
+
+	if (typeof runtimeStatus?.pid === "number") {
+		const stopped = await stopTrackedChildProcess(runtimeStatus.pid);
+		if (stopped) {
+			return {
+				type: "child-process-stopped",
+				summary: `Stopped stale ${input.childOperation?.command} provider process ${runtimeStatus.pid} after interruption handling.`,
+				data: cleanupData,
+			};
+		}
+	}
+
+	return {
+		type: "child-process-abandoned",
+		summary: `Recorded abandoned ${input.childOperation?.command} provider process identity after interruption handling.`,
+		data: cleanupData,
+	};
 }
 
 type DerivedVerifierOutcome = "pass" | "revise" | "block" | "not-run";
@@ -1175,6 +1375,26 @@ export async function runStoryLead(
 		nextIntentSummary: string;
 		eventData?: Record<string, unknown>;
 	}) => {
+		const cleanupRecord =
+			currentSnapshot.lifecycleState === "running_child_operation" &&
+			currentSnapshot.currentChildOperation
+				? await cleanupTrackedChildOperation({
+						storyId,
+						storyRunId: attemptPaths.storyRunId,
+						childOperation: currentSnapshot.currentChildOperation,
+					})
+				: null;
+		if (cleanupRecord) {
+			await appendRunEvent(
+				buildEvent({
+					storyRunId: attemptPaths.storyRunId,
+					sequence: currentSnapshot.latestEventSequence + 1,
+					type: cleanupRecord.type,
+					summary: cleanupRecord.summary,
+					data: cleanupRecord.data,
+				}),
+			);
+		}
 		const replayBoundary = replayBoundaryForFailure({
 			reason: params.reason,
 			validArtifactPaths: currentSnapshot.latestArtifacts.map(
@@ -1246,6 +1466,7 @@ export async function runStoryLead(
 				artifactRef: attemptPaths.finalPackagePath,
 			},
 			replayBoundary,
+			currentChildOperation: null,
 		});
 		input.progressListener?.(
 			buildAttachedEvent({
@@ -1603,6 +1824,11 @@ export async function runStoryLead(
 			): Promise<string | StoryLeadRuntimeResult> => {
 				switch (action.action) {
 					case "run-implement": {
+						const childArtifacts = await allocateChildOperationArtifacts({
+							specPackRoot: input.specPackRoot,
+							storyId,
+							command: "story-implement",
+						});
 						await overwriteSnapshot({
 							status: "running",
 							lifecycleState: "running_child_operation",
@@ -1614,6 +1840,7 @@ export async function runStoryLead(
 							},
 							currentChildOperation: {
 								command: "story-implement",
+								artifactPath: childArtifacts.artifactPath,
 							},
 							replayBoundary: null,
 						});
@@ -1626,6 +1853,9 @@ export async function runStoryLead(
 										storyId,
 										configPath: input.configPath,
 										env: input.env,
+										artifactPath: childArtifacts.artifactPath,
+										streamOutputPaths: childArtifacts.streamOutputPaths,
+										runtimeProgressPaths: childArtifacts.runtimeProgressPaths,
 										disableHeartbeats: true,
 									}) as Promise<OperationEnvelope<ImplementorResult>>,
 							});
@@ -1699,6 +1929,11 @@ export async function runStoryLead(
 									"Resume from the last valid child artifact after correcting the story-lead action response.",
 							});
 						}
+						const childArtifacts = await allocateChildOperationArtifacts({
+							specPackRoot: input.specPackRoot,
+							storyId,
+							command: "story-continue",
+						});
 						await overwriteSnapshot({
 							status: "running",
 							lifecycleState: "running_child_operation",
@@ -1711,6 +1946,7 @@ export async function runStoryLead(
 							},
 							currentChildOperation: {
 								command: "story-continue",
+								artifactPath: childArtifacts.artifactPath,
 								continuationHandleRef: action.inputs.continuationRef,
 							},
 							replayBoundary: null,
@@ -1726,6 +1962,9 @@ export async function runStoryLead(
 										followupRequest: action.inputs.promptAddendum,
 										configPath: input.configPath,
 										env: input.env,
+										artifactPath: childArtifacts.artifactPath,
+										streamOutputPaths: childArtifacts.streamOutputPaths,
+										runtimeProgressPaths: childArtifacts.runtimeProgressPaths,
 										disableHeartbeats: true,
 									}) as Promise<OperationEnvelope<ImplementorResult>>,
 							});
@@ -1795,6 +2034,12 @@ export async function runStoryLead(
 									"Resume from the last valid child artifact after correcting the story-lead action response.",
 							});
 						}
+						const childArtifacts = await allocateChildOperationArtifacts({
+							specPackRoot: input.specPackRoot,
+							storyId,
+							command: "story-self-review",
+							selfReviewPasses: action.inputs.passes ?? 1,
+						});
 						await overwriteSnapshot({
 							status: "running",
 							lifecycleState: "running_child_operation",
@@ -1807,6 +2052,7 @@ export async function runStoryLead(
 							},
 							currentChildOperation: {
 								command: "story-self-review",
+								artifactPath: childArtifacts.artifactPath,
 								continuationHandleRef: continuationRef,
 							},
 							replayBoundary: null,
@@ -1820,9 +2066,12 @@ export async function runStoryLead(
 										storyId,
 										continuationHandle: continuation,
 										passes: action.inputs.passes ?? 1,
-										passArtifactPaths: [],
+										passArtifactPaths: childArtifacts.passArtifactPaths ?? [],
 										configPath: input.configPath,
 										env: input.env,
+										artifactPath: childArtifacts.artifactPath,
+										streamOutputPaths: childArtifacts.streamOutputPaths,
+										runtimeProgressPaths: childArtifacts.runtimeProgressPaths,
 										disableHeartbeats: true,
 									}) as Promise<OperationEnvelope<StorySelfReviewResult>>,
 							});
@@ -1915,6 +2164,11 @@ export async function runStoryLead(
 								}
 								response = await readTextFile(artifactPath);
 							}
+							const childArtifacts = await allocateChildOperationArtifacts({
+								specPackRoot: input.specPackRoot,
+								storyId,
+								command: "story-verify",
+							});
 							await overwriteSnapshot({
 								status: "running",
 								lifecycleState: "running_child_operation",
@@ -1927,6 +2181,7 @@ export async function runStoryLead(
 								},
 								currentChildOperation: {
 									command: "story-verify",
+									artifactPath: childArtifacts.artifactPath,
 									continuationHandleRef: action.inputs.verifierContinuationRef,
 								},
 								replayBoundary: null,
@@ -1944,6 +2199,9 @@ export async function runStoryLead(
 											orchestratorContext: action.inputs.orchestratorContext,
 											configPath: input.configPath,
 											env: input.env,
+											artifactPath: childArtifacts.artifactPath,
+											streamOutputPaths: childArtifacts.streamOutputPaths,
+											runtimeProgressPaths: childArtifacts.runtimeProgressPaths,
 											disableHeartbeats: true,
 										}) as Promise<OperationEnvelope<StoryVerifierResult>>,
 								});
@@ -1997,6 +2255,11 @@ export async function runStoryLead(
 							maybeCrashAfterChildResult("story-verify");
 							return completionEvent.summary;
 						}
+						const childArtifacts = await allocateChildOperationArtifacts({
+							specPackRoot: input.specPackRoot,
+							storyId,
+							command: "story-verify",
+						});
 						await overwriteSnapshot({
 							status: "running",
 							lifecycleState: "running_child_operation",
@@ -2008,6 +2271,7 @@ export async function runStoryLead(
 							},
 							currentChildOperation: {
 								command: "story-verify",
+								artifactPath: childArtifacts.artifactPath,
 							},
 							replayBoundary: null,
 						});
@@ -2023,6 +2287,9 @@ export async function runStoryLead(
 											action.inputs.orchestratorContext ?? action.inputs.focus,
 										configPath: input.configPath,
 										env: input.env,
+										artifactPath: childArtifacts.artifactPath,
+										streamOutputPaths: childArtifacts.streamOutputPaths,
+										runtimeProgressPaths: childArtifacts.runtimeProgressPaths,
 										disableHeartbeats: true,
 									}) as Promise<OperationEnvelope<StoryVerifierResult>>,
 							});
@@ -2078,6 +2345,11 @@ export async function runStoryLead(
 						return completionEvent.summary;
 					}
 					case "run-quick-fix": {
+						const childArtifacts = await allocateChildOperationArtifacts({
+							specPackRoot: input.specPackRoot,
+							storyId,
+							command: "quick-fix",
+						});
 						await overwriteSnapshot({
 							status: "running",
 							lifecycleState: "running_child_operation",
@@ -2089,6 +2361,7 @@ export async function runStoryLead(
 							},
 							currentChildOperation: {
 								command: "quick-fix",
+								artifactPath: childArtifacts.artifactPath,
 							},
 							replayBoundary: null,
 						});
@@ -2102,6 +2375,9 @@ export async function runStoryLead(
 										workingDirectory: action.inputs.workingDirectory,
 										configPath: input.configPath,
 										env: input.env,
+										artifactPath: childArtifacts.artifactPath,
+										streamOutputPaths: childArtifacts.streamOutputPaths,
+										runtimeProgressPaths: childArtifacts.runtimeProgressPaths,
 										disableHeartbeats: true,
 									}) as Promise<OperationEnvelope<QuickFixResult>>,
 							});

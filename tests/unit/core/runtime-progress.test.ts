@@ -64,6 +64,7 @@ describe("runtime progress artifacts", () => {
 		).map((line) => runtimeProgressEventSchema.parse(line));
 
 		expect(runtimeStatus.status).toBe("completed");
+		expect(runtimeStatus.providerLiveness).toBe("completed");
 		expect(runtimeStatus.artifactPath).toBe(artifactPath);
 		expect(runtimeStatus.lastOutputAt).not.toBeNull();
 		expect(runtimeStatus.streamPaths).toEqual(streamPaths);
@@ -126,6 +127,7 @@ describe("runtime progress artifacts", () => {
 		).map((line) => runtimeProgressEventSchema.parse(line));
 
 		expect(runtimeStatus.status).toBe("failed");
+		expect(runtimeStatus.providerLiveness).toBe("active-with-output");
 		expect(progressEvents.map((event) => event.event)).toEqual(
 			expect.arrayContaining(["provider-exit", "failed"]),
 		);
@@ -176,13 +178,14 @@ describe("runtime progress artifacts", () => {
 		).map((line) => runtimeProgressEventSchema.parse(line));
 
 		expect(runtimeStatus.status).toBe("failed");
+		expect(runtimeStatus.providerLiveness).toBe("timed-out");
 		expect(progressEvents.map((event) => event.event)).toEqual(
 			expect.arrayContaining(["timeout", "provider-exit", "failed"]),
 		);
 	});
 
-	test("records stalled events when a provider never produces startup output before the startup timeout", async () => {
-		const tempDir = await createTempDir("runtime-progress-stalled-startup");
+	test("records startup-failed events when a provider never produces startup output before the startup timeout", async () => {
+		const tempDir = await createTempDir("runtime-progress-startup-failed");
 		const artifactPath = join(
 			tempDir,
 			"artifacts",
@@ -217,10 +220,10 @@ describe("runtime progress artifacts", () => {
 			streamOutputPaths: streamPaths,
 			lifecycleCallback: (event) => tracker.handleProviderLifecycle(event),
 		});
-		expect(execution.errorCode).toBe("PROVIDER_STALLED");
+		expect(execution.errorCode).toBe("PROVIDER_STARTUP_FAILED");
 
 		await tracker.markFailed(
-			"story-verify stalled before any provider output.",
+			"story-verify failed startup before any provider output.",
 			{
 				errorCode: execution.errorCode,
 			},
@@ -235,11 +238,11 @@ describe("runtime progress artifacts", () => {
 		).map((line) => runtimeProgressEventSchema.parse(line));
 
 		expect(runtimeStatus.status).toBe("failed");
+		expect(runtimeStatus.providerLiveness).toBe("startup-failed");
 		expect(runtimeStatus.configuredStartupTimeoutMs).toBe(50);
 		expect(runtimeStatus.configuredSilenceTimeoutMs).toBe(100);
-		expect(runtimeStatus.stalledAt).toBeTruthy();
 		expect(progressEvents.map((event) => event.event)).toEqual(
-			expect.arrayContaining(["stalled", "provider-exit", "failed"]),
+			expect.arrayContaining(["startup-failed", "provider-exit", "failed"]),
 		);
 	});
 
@@ -253,6 +256,7 @@ describe("runtime progress artifacts", () => {
 				startedAt: "2026-04-22T10:12:34Z",
 				updatedAt: "2026-04-22T10:12:34Z",
 				lastOutputAt: null,
+				providerLiveness: "starting",
 				provider: "codex",
 				pid: null,
 				cwd: ROOT,

@@ -18,6 +18,7 @@ function runtimeSnapshot(
 		startedAt: "2026-05-01T12:00:00.000Z",
 		updatedAt: "2026-05-01T12:00:00.000Z",
 		lastOutputAt: null,
+		providerLiveness: "starting",
 		provider: "codex",
 		pid: 123,
 		cwd: "/tmp/project",

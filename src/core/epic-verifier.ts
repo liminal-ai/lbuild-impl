@@ -208,10 +208,13 @@ function executionFailureError(input: {
 		);
 	}
 
-	if (input.errorCode === "ENOENT") {
+	if (
+		input.errorCode === "PROVIDER_STARTUP_FAILED" ||
+		input.errorCode === "ENOENT"
+	) {
 		return blockedError(
-			"PROVIDER_UNAVAILABLE",
-			`Provider executable is unavailable for ${input.provider}.`,
+			"PROVIDER_STARTUP_FAILED",
+			`Provider failed startup for ${input.provider}.`,
 			input.stderr,
 		);
 	}
@@ -351,6 +354,10 @@ export async function runEpicVerify(input: {
 				progressPaths: input.runtimeProgressPaths,
 				verifiersCompleted: 0,
 				verifiersPlanned: context.verifiers.length,
+				verifierLanes: context.verifiers.map((verifier) => ({
+					label: verifier.label,
+					provider: verifier.provider,
+				})),
 			})
 		: undefined;
 
@@ -379,16 +386,11 @@ export async function runEpicVerify(input: {
 					testPlanPath: context.paths.testPlanPath,
 					gateCommands: context.gateCommands,
 				});
-				await progressTracker?.recordEvent({
+				await progressTracker?.recordVerifierLaneStarted({
+					label: verifier.label,
+					provider: verifier.provider,
 					phase: `epic-verifier-${index + 1}`,
-					event: "verifier-started",
 					summary: `${verifier.label} started for epic verification.`,
-					metadata: {
-						verifierLabel: verifier.label,
-					},
-					patch: {
-						provider: verifier.provider,
-					},
 				});
 				const execution = await executeVerifier({
 					provider: verifier.provider,
@@ -402,26 +404,32 @@ export async function runEpicVerify(input: {
 					silenceTimeoutMs: context.silenceTimeoutMs,
 					streamOutputPaths: input.streamOutputPaths,
 					lifecycleCallback: (event) =>
-						progressTracker?.handleProviderLifecycle(event),
+						progressTracker?.handleVerifierLaneLifecycle(verifier.label, event),
 				});
 
 				if ("errors" in execution) {
+					await progressTracker?.recordVerifierLaneFailed({
+						label: verifier.label,
+						provider: verifier.provider,
+						phase: `epic-verifier-${index + 1}`,
+						summary: `${verifier.label} failed for epic verification.`,
+						metadata: {
+							errorCodes: execution.errors.map((error) => error.code),
+						},
+					});
 					return execution;
 				}
 
 				completedVerifiers += 1;
-				await progressTracker?.recordEvent({
+				await progressTracker?.recordVerifierLaneCompleted({
+					label: verifier.label,
+					provider: verifier.provider,
 					phase: `epic-verifier-${index + 1}`,
-					event: "verifier-completed",
 					summary: `${verifier.label} completed for epic verification.`,
 					metadata: {
-						verifierLabel: verifier.label,
 						gateResult: execution.payload.gateResult,
 					},
-					patch: {
-						provider: verifier.provider,
-						verifiersCompleted: completedVerifiers,
-					},
+					verifiersCompleted: completedVerifiers,
 				});
 
 				return {

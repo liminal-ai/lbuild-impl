@@ -10,10 +10,35 @@ import {
 
 export type ProviderName = "claude-code" | "codex" | "copilot";
 
+export type ProviderLivenessState =
+	| "starting"
+	| "startup-failed"
+	| "active-with-output"
+	| "active-silent"
+	| "stalled"
+	| "timed-out"
+	| "completed";
+
+export type ProviderStartupMode = "require-output" | "spawn-is-healthy";
+
 export type ProviderLifecycleEvent =
 	| {
 			type: "provider-spawned";
 			pid: number | null;
+			timestamp: string;
+	  }
+	| {
+			type: "startup-failed";
+			reason: "spawn-error" | "no-output-before-timeout" | "nonzero-exit";
+			configuredStartupTimeoutMs: number;
+			elapsedMs: number;
+			timestamp: string;
+	  }
+	| {
+			type: "active-silent";
+			silenceMs: number;
+			configuredSilenceTimeoutMs: number;
+			configuredStartupTimeoutMs: number;
 			timestamp: string;
 	  }
 	| {
@@ -57,6 +82,7 @@ export interface ProviderExecutionRequest<TResult> {
 	timeoutMs: number;
 	startupTimeoutMs?: number;
 	silenceTimeoutMs?: number;
+	startupMode?: ProviderStartupMode;
 	resultSchema?: z.ZodType<TResult>;
 	streamOutputPaths?: ProviderStreamOutputPaths;
 	lifecycleCallback?: (event: ProviderLifecycleEvent) => void | Promise<void>;
@@ -324,6 +350,7 @@ export async function runProviderCommand(params: {
 	timeoutMs: number;
 	startupTimeoutMs?: number;
 	silenceTimeoutMs?: number;
+	startupMode?: ProviderStartupMode;
 	streamOutputPaths?: ProviderStreamOutputPaths;
 	lifecycleCallback?: (event: ProviderLifecycleEvent) => void | Promise<void>;
 }): Promise<{
@@ -353,6 +380,7 @@ export async function runProviderCommand(params: {
 	const emitLifecycleEvent = (event: ProviderLifecycleEvent) => {
 		void params.lifecycleCallback?.(event);
 	};
+	const startupMode = params.startupMode ?? "require-output";
 
 	return await new Promise((resolveResult) => {
 		let stdout = "";
@@ -360,6 +388,8 @@ export async function runProviderCommand(params: {
 		let settled = false;
 		let timedOut = false;
 		let stalled = false;
+		let startupFailed = false;
+		let startupFailureEmitted = false;
 		let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 		let startupTimeout: ReturnType<typeof setTimeout> | undefined;
 		let silenceTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -376,6 +406,15 @@ export async function runProviderCommand(params: {
 			pid: child.pid ?? null,
 			timestamp: new Date().toISOString(),
 		});
+		if (startupMode === "spawn-is-healthy") {
+			emitLifecycleEvent({
+				type: "active-silent",
+				silenceMs: 0,
+				configuredSilenceTimeoutMs: params.silenceTimeoutMs ?? 0,
+				configuredStartupTimeoutMs: params.startupTimeoutMs ?? 0,
+				timestamp: new Date().toISOString(),
+			});
+		}
 
 		const finish = async (result: {
 			provider: ProviderName;
@@ -486,17 +525,22 @@ export async function runProviderCommand(params: {
 
 		child.on("error", async (error) => {
 			const message = error instanceof Error ? error.message : String(error);
+			if (!startupFailureEmitted) {
+				startupFailureEmitted = true;
+				emitLifecycleEvent({
+					type: "startup-failed",
+					reason: "spawn-error",
+					configuredStartupTimeoutMs: params.startupTimeoutMs ?? 0,
+					elapsedMs: Date.now() - startedAt,
+					timestamp: new Date().toISOString(),
+				});
+			}
 			await finish({
 				provider: params.provider,
 				stdout: redactSensitiveText(stdout.trim()),
 				stderr: redactSensitiveText((stderr || message).trim()),
 				exitCode: 1,
-				errorCode:
-					error instanceof Error &&
-					"code" in error &&
-					typeof error.code === "string"
-						? error.code
-						: undefined,
+				errorCode: "PROVIDER_STARTUP_FAILED",
 				signal: null,
 				timedOut,
 				elapsedMs: Date.now() - startedAt,
@@ -506,6 +550,23 @@ export async function runProviderCommand(params: {
 
 		child.on("close", async (code, signal) => {
 			const elapsedMs = Date.now() - startedAt;
+			const failedBeforeAnyOutput =
+				!firstOutputReceived &&
+				!timedOut &&
+				!stalled &&
+				typeof code === "number" &&
+				code !== 0;
+			if (failedBeforeAnyOutput && !startupFailureEmitted) {
+				startupFailureEmitted = true;
+				startupFailed = true;
+				emitLifecycleEvent({
+					type: "startup-failed",
+					reason: "nonzero-exit",
+					configuredStartupTimeoutMs: params.startupTimeoutMs ?? 0,
+					elapsedMs,
+					timestamp: new Date().toISOString(),
+				});
+			}
 			emitLifecycleEvent({
 				type: "provider-exit",
 				exitCode: typeof code === "number" ? code : timedOut ? 124 : 1,
@@ -514,11 +575,13 @@ export async function runProviderCommand(params: {
 				configuredTimeoutMs: params.timeoutMs,
 				timestamp: new Date().toISOString(),
 			});
-			const timeoutMessage = stalled
-				? `Provider stalled after ${elapsedMs}ms without sufficient output activity.`
-				: timedOut || signal === "SIGTERM" || signal === "SIGKILL"
-					? `Provider timed out after ${elapsedMs}ms (configured ${params.timeoutMs}ms).`
-					: "";
+			const timeoutMessage = startupFailed
+				? `Provider failed startup before producing output (configured startup timeout ${params.startupTimeoutMs ?? 0}ms).`
+				: stalled
+					? `Provider stalled after ${elapsedMs}ms without sufficient output activity.`
+					: timedOut || signal === "SIGTERM" || signal === "SIGKILL"
+						? `Provider timed out after ${elapsedMs}ms (configured ${params.timeoutMs}ms).`
+						: "";
 			const finalStderr =
 				(timedOut || stalled) && stderr.trim().length === 0
 					? timeoutMessage
@@ -536,11 +599,13 @@ export async function runProviderCommand(params: {
 				stdout: redactSensitiveText(stdout.trim()),
 				stderr: redactSensitiveText(finalStderr.trim()),
 				exitCode: typeof code === "number" ? code : timedOut ? 124 : 1,
-				errorCode: stalled
-					? "PROVIDER_STALLED"
-					: timedOut
-						? "PROVIDER_TIMEOUT"
-						: undefined,
+				errorCode: startupFailed
+					? "PROVIDER_STARTUP_FAILED"
+					: stalled
+						? "PROVIDER_STALLED"
+						: timedOut
+							? "PROVIDER_TIMEOUT"
+							: undefined,
 				signal,
 				timedOut,
 				elapsedMs,
@@ -566,17 +631,20 @@ export async function runProviderCommand(params: {
 				: undefined;
 
 		startupTimeout =
-			params.startupTimeoutMs && params.startupTimeoutMs > 0
+			startupMode === "require-output" &&
+			params.startupTimeoutMs &&
+			params.startupTimeoutMs > 0
 				? setTimeout(() => {
 						if (settled || firstOutputReceived) {
 							return;
 						}
-						stalled = true;
+						startupFailed = true;
+						startupFailureEmitted = true;
 						emitLifecycleEvent({
-							type: "stalled",
-							silenceMs: params.startupTimeoutMs ?? 0,
-							configuredSilenceTimeoutMs: params.silenceTimeoutMs ?? 0,
+							type: "startup-failed",
+							reason: "no-output-before-timeout",
 							configuredStartupTimeoutMs: params.startupTimeoutMs ?? 0,
+							elapsedMs: Date.now() - startedAt,
 							timestamp: new Date().toISOString(),
 						});
 						child.kill("SIGTERM");

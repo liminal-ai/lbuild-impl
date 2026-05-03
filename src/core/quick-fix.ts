@@ -97,10 +97,13 @@ function executionFailureError(input: {
 		);
 	}
 
-	if (input.errorCode === "ENOENT") {
+	if (
+		input.errorCode === "PROVIDER_STARTUP_FAILED" ||
+		input.errorCode === "ENOENT"
+	) {
 		return blockedError(
-			"PROVIDER_UNAVAILABLE",
-			`Provider executable is unavailable for ${input.provider}.`,
+			"PROVIDER_STARTUP_FAILED",
+			`Provider failed startup for ${input.provider}.`,
 			input.stderr,
 		);
 	}
