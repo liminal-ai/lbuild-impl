@@ -21,6 +21,37 @@ import {
 	storyLeadFinalPackageSchema,
 } from "./story-orchestrate-contracts.js";
 
+function effectiveArtifactProvenance(
+	artifact: ArtifactRef,
+): NonNullable<ArtifactRef["provenance"]> {
+	if (artifact.provenance) {
+		return artifact.provenance;
+	}
+
+	switch (artifact.kind) {
+		case "prior-final-package":
+			return "prior-run";
+		case "review-request":
+		case "ruling-response":
+			return "caller-input";
+		default:
+			return "fixture/preexisting";
+	}
+}
+
+function withArtifactProvenance(artifacts: ArtifactRef[]): ArtifactRef[] {
+	return artifacts.map((artifact) => ({
+		...artifact,
+		provenance: effectiveArtifactProvenance(artifact),
+	}));
+}
+
+function currentRunArtifactPaths(artifacts: ArtifactRef[]): string[] {
+	return withArtifactProvenance(artifacts)
+		.filter((artifact) => artifact.provenance === "current-run")
+		.map((artifact) => artifact.path);
+}
+
 function defaultCommitReadiness(input: {
 	outcome: StoryLeadOutcome;
 }): CommitReadiness {
@@ -379,11 +410,21 @@ export function buildStoryLeadFinalPackage(
 	const commitReadiness =
 		input.commitReadiness ?? defaultCommitReadiness({ outcome: input.outcome });
 	const evidence = {
-		implementorArtifacts: input.evidence?.implementorArtifacts ?? [],
-		selfReviewArtifacts: input.evidence?.selfReviewArtifacts ?? [],
-		verifierArtifacts: input.evidence?.verifierArtifacts ?? [],
-		quickFixArtifacts: input.evidence?.quickFixArtifacts ?? [],
-		callerInputArtifacts: input.evidence?.callerInputArtifacts ?? [],
+		implementorArtifacts: withArtifactProvenance(
+			input.evidence?.implementorArtifacts ?? [],
+		),
+		selfReviewArtifacts: withArtifactProvenance(
+			input.evidence?.selfReviewArtifacts ?? [],
+		),
+		verifierArtifacts: withArtifactProvenance(
+			input.evidence?.verifierArtifacts ?? [],
+		),
+		quickFixArtifacts: withArtifactProvenance(
+			input.evidence?.quickFixArtifacts ?? [],
+		),
+		callerInputArtifacts: withArtifactProvenance(
+			input.evidence?.callerInputArtifacts ?? [],
+		),
 		gateRuns: [gateRun],
 	};
 	const checks = mergeAcceptanceChecks({
@@ -396,12 +437,10 @@ export function buildStoryLeadFinalPackage(
 			baselineBeforeStory: input.baselineBeforeStory ?? null,
 			baselineAfterStory: input.baselineAfterStory ?? null,
 			commitReadiness,
-			implementorEvidenceRefs: evidence.implementorArtifacts.map(
-				(artifact) => artifact.path,
+			implementorEvidenceRefs: currentRunArtifactPaths(
+				evidence.implementorArtifacts,
 			),
-			verifierEvidenceRefs: evidence.verifierArtifacts.map(
-				(artifact) => artifact.path,
-			),
+			verifierEvidenceRefs: currentRunArtifactPaths(evidence.verifierArtifacts),
 		}),
 		providerChecks: input.acceptanceSummary?.acceptanceChecks,
 	});
@@ -479,12 +518,10 @@ export function buildStoryLeadFinalPackage(
 			continuationHandles: input.continuationHandles,
 			gateRun,
 			verification,
-			implementorEvidenceRefs: evidence.implementorArtifacts.map(
-				(artifact) => artifact.path,
+			implementorEvidenceRefs: currentRunArtifactPaths(
+				evidence.implementorArtifacts,
 			),
-			verifierEvidenceRefs: evidence.verifierArtifacts.map(
-				(artifact) => artifact.path,
-			),
+			verifierEvidenceRefs: currentRunArtifactPaths(evidence.verifierArtifacts),
 			openRisks,
 			commitReadiness,
 			baselineBeforeStory: input.baselineBeforeStory ?? null,

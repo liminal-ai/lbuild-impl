@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { writeAtomic } from "../infra/fs-atomic.js";
 import {
 	type AppendStoryRunEventInput,
+	type ArtifactRef,
 	appendStoryRunEventInputSchema,
 	type StoryLeadFinalPackage,
 	storyLeadFinalPackageSchema,
@@ -20,6 +21,7 @@ import {
 	appendFile,
 	mkdir,
 	readdirDirents,
+	stat,
 	writeFile,
 } from "./runtime-deps.js";
 
@@ -61,6 +63,28 @@ export interface StoryRunLedger {
 	writeCurrentSnapshot(input: WriteCurrentSnapshotInput): Promise<void>;
 	appendEvent(input: AppendStoryRunEventInput): Promise<void>;
 	writeFinalPackage(input: WriteFinalPackageInput): Promise<void>;
+	recordChildOperationCompletion(input: {
+		storyRunId: string;
+		event: StoryRunEvent;
+		snapshot: StoryRunCurrentSnapshot;
+		requiredArtifacts: ArtifactRef[];
+	}): Promise<void>;
+}
+
+export class StoryRunArtifactIntegrityError extends Error {
+	readonly issue: "STORY_RUN_ARTIFACT_MISSING" | "STORY_RUN_ARTIFACT_EMPTY";
+	readonly artifactPath: string;
+
+	constructor(input: {
+		issue: "STORY_RUN_ARTIFACT_MISSING" | "STORY_RUN_ARTIFACT_EMPTY";
+		artifactPath: string;
+		message: string;
+	}) {
+		super(input.message);
+		this.name = "StoryRunArtifactIntegrityError";
+		this.issue = input.issue;
+		this.artifactPath = input.artifactPath;
+	}
 }
 
 function storyLeadArtifactDir(specPackRoot: string, storyId: string): string {
@@ -204,6 +228,29 @@ function normalizeSnapshotForRead(
 	return rest;
 }
 
+export async function assertStoryRunArtifactsReady(
+	artifacts: ArtifactRef[],
+): Promise<void> {
+	for (const artifact of artifacts) {
+		if (!(await pathExists(artifact.path))) {
+			throw new StoryRunArtifactIntegrityError({
+				issue: "STORY_RUN_ARTIFACT_MISSING",
+				artifactPath: artifact.path,
+				message: `Required child-operation artifact is missing: ${artifact.path}`,
+			});
+		}
+
+		const details = await stat(artifact.path);
+		if (details.size <= 0) {
+			throw new StoryRunArtifactIntegrityError({
+				issue: "STORY_RUN_ARTIFACT_EMPTY",
+				artifactPath: artifact.path,
+				message: `Required child-operation artifact is empty: ${artifact.path}`,
+			});
+		}
+	}
+}
+
 export function createStoryRunLedger(input: {
 	specPackRoot: string;
 	storyId: string;
@@ -341,6 +388,44 @@ export function createStoryRunLedger(input: {
 				paths.finalPackagePath,
 				`${JSON.stringify(parsed.finalPackage)}\n`,
 			);
+		},
+
+		async recordChildOperationCompletion(payload: {
+			storyRunId: string;
+			event: StoryRunEvent;
+			snapshot: StoryRunCurrentSnapshot;
+			requiredArtifacts: ArtifactRef[];
+		}) {
+			const parsedEvent = storyRunEventSchema.parse(payload.event);
+			const parsedSnapshot = storyRunCurrentSnapshotSchema.parse(
+				payload.snapshot,
+			);
+			if (
+				payload.storyRunId !== parsedEvent.storyRunId ||
+				payload.storyRunId !== parsedSnapshot.storyRunId
+			) {
+				throw new Error(
+					"Child-operation completion payload must agree on storyRunId.",
+				);
+			}
+			await assertStoryRunArtifactsReady(payload.requiredArtifacts);
+
+			const paths = buildAttemptPaths(
+				artifactDir,
+				parsedSnapshot.attempt,
+				input.storyId,
+			);
+			await mkdir(dirname(paths.eventHistoryPath), { recursive: true });
+			await appendFile(
+				paths.eventHistoryPath,
+				`${JSON.stringify(parsedEvent)}\n`,
+			);
+			await appendProgressEvent(paths.progressHistoryPath, parsedEvent);
+			await writeAtomic(
+				paths.currentSnapshotPath,
+				`${JSON.stringify(parsedSnapshot)}\n`,
+			);
+			await writeProgressStatus(paths.progressStatusPath, parsedSnapshot);
 		},
 	};
 }

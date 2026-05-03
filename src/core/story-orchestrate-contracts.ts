@@ -29,10 +29,18 @@ export const storyLeadSessionRefSchema = z
 	})
 	.strict();
 
+export const artifactProvenanceSchema = z.enum([
+	"current-run",
+	"prior-run",
+	"caller-input",
+	"fixture/preexisting",
+]);
+
 export const artifactRefSchema = z
 	.object({
 		kind: z.string().min(1),
 		path: z.string().min(1),
+		provenance: artifactProvenanceSchema.optional(),
 	})
 	.strict();
 

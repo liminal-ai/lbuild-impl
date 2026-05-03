@@ -2,12 +2,16 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { createStoryRunLedger } from "../../../src/core/story-run-ledger";
+import {
+	assertStoryRunArtifactsReady,
+	createStoryRunLedger,
+} from "../../../src/core/story-run-ledger";
 import { readJsonLines } from "../../support/test-helpers";
 import {
 	createStoryOrchestrateSpecPack,
 	seedStoryRunAttempt,
 } from "../../support/story-orchestrate-fixtures";
+import { writeTextFile } from "../../support/test-helpers";
 
 describe("story-run ledger", () => {
 	test("TC-2.4a, TC-2.4b, and TC-2.4c persist current snapshot, append-only events, and a terminal final package", async () => {
@@ -419,5 +423,274 @@ describe("story-run ledger", () => {
 				}),
 			}),
 		]);
+	});
+
+	test("TC-5.1a, TC-5.1b, and TC-5.1c accept only non-empty completed child-operation artifacts", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-run-ledger-non-empty-artifacts",
+		);
+		const artifactDir = join(specPackRoot, "artifacts", storyId);
+		const implementorPath = join(artifactDir, "001-implementor.json");
+		const verifierPath = join(artifactDir, "002-verify.json");
+		const quickFixPath = join(
+			specPackRoot,
+			"artifacts",
+			"quick-fix",
+			"001-quick-fix.json",
+		);
+
+		await writeTextFile(implementorPath, '{"ok":"implementor"}\n');
+		await writeTextFile(verifierPath, '{"ok":"verifier"}\n');
+		await writeTextFile(quickFixPath, '{"ok":"quick-fix"}\n');
+
+		await expect(
+			assertStoryRunArtifactsReady([
+				{
+					kind: "implementor-result",
+					path: implementorPath,
+					provenance: "current-run",
+				},
+				{
+					kind: "verifier-result",
+					path: verifierPath,
+					provenance: "current-run",
+				},
+				{
+					kind: "quick-fix-result",
+					path: quickFixPath,
+					provenance: "current-run",
+				},
+			]),
+		).resolves.toBeUndefined();
+	});
+
+	test("TC-5.2a advances child-operation state only after the required artifact is durably present", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-run-ledger-artifact-before-state",
+		);
+		const ledger = createStoryRunLedger({
+			specPackRoot,
+			storyId,
+		});
+		const attempt = await ledger.createAttempt();
+		const artifactPath = join(
+			specPackRoot,
+			"artifacts",
+			storyId,
+			"001-implementor.json",
+		);
+		await writeTextFile(artifactPath, '{"ok":"durable"}\n');
+
+		await ledger.writeCurrentSnapshot({
+			storyId,
+			storyRunId: attempt.storyRunId,
+			snapshot: {
+				storyRunId: attempt.storyRunId,
+				storyId,
+				attempt: attempt.attempt,
+				status: "running",
+				lifecycleState: "running_child_operation",
+				currentSummary: "Implementor is running.",
+				currentPhase: "run-implement",
+				currentChildOperation: {
+					command: "story-implement",
+					artifactPath,
+				},
+				latestArtifacts: [],
+				latestContinuationHandles: {},
+				latestEventSequence: 0,
+				callerInputHistory: {
+					reviewRequests: [],
+					rulings: [],
+				},
+				nextIntent: {
+					actionType: "await-story-implement",
+					summary: "Wait for implementor completion.",
+				},
+				replayBoundary: null,
+				updatedAt: "2026-05-03T12:00:00.000Z",
+			},
+		});
+
+		await ledger.recordChildOperationCompletion({
+			storyRunId: attempt.storyRunId,
+			event: {
+				storyRunId: attempt.storyRunId,
+				sequence: 1,
+				timestamp: "2026-05-03T12:01:00.000Z",
+				type: "child-operation-completed",
+				summary: "story-implement completed with durable output.",
+				artifact: artifactPath,
+			},
+			snapshot: {
+				storyRunId: attempt.storyRunId,
+				storyId,
+				attempt: attempt.attempt,
+				status: "running",
+				lifecycleState: "awaiting_story_lead_action",
+				currentSummary: "story-implement completed with durable output.",
+				currentPhase: "story-lead-awaiting-action",
+				currentChildOperation: null,
+				latestArtifacts: [
+					{
+						kind: "implementor-result",
+						path: artifactPath,
+						provenance: "current-run",
+					},
+				],
+				latestContinuationHandles: {},
+				latestEventSequence: 1,
+				callerInputHistory: {
+					reviewRequests: [],
+					rulings: [],
+				},
+				nextIntent: {
+					actionType: "await-story-lead-action",
+					summary: "Inspect the durable implementor artifact.",
+					artifactRef: artifactPath,
+				},
+				replayBoundary: null,
+				updatedAt: "2026-05-03T12:01:00.000Z",
+			},
+			requiredArtifacts: [
+				{
+					kind: "implementor-result",
+					path: artifactPath,
+					provenance: "current-run",
+				},
+			],
+		});
+
+		await expect(
+			ledger.readCurrentSnapshot(attempt.currentSnapshotPath),
+		).resolves.toEqual(
+			expect.objectContaining({
+				lifecycleState: "awaiting_story_lead_action",
+				latestArtifacts: [
+					expect.objectContaining({
+						path: artifactPath,
+						provenance: "current-run",
+					}),
+				],
+			}),
+		);
+		await expect(readJsonLines(attempt.eventHistoryPath)).resolves.toEqual([
+			expect.objectContaining({
+				type: "child-operation-completed",
+				artifact: artifactPath,
+			}),
+		]);
+	});
+
+	test("TC-5.2b blocks child-operation state advancement when the required artifact is empty", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-run-ledger-empty-artifact-blocks-state",
+		);
+		const ledger = createStoryRunLedger({
+			specPackRoot,
+			storyId,
+		});
+		const attempt = await ledger.createAttempt();
+		const artifactPath = join(
+			specPackRoot,
+			"artifacts",
+			storyId,
+			"001-implementor.json",
+		);
+		await writeTextFile(artifactPath, "");
+
+		await ledger.writeCurrentSnapshot({
+			storyId,
+			storyRunId: attempt.storyRunId,
+			snapshot: {
+				storyRunId: attempt.storyRunId,
+				storyId,
+				attempt: attempt.attempt,
+				status: "running",
+				lifecycleState: "running_child_operation",
+				currentSummary: "Implementor is still running.",
+				currentPhase: "run-implement",
+				currentChildOperation: {
+					command: "story-implement",
+					artifactPath,
+				},
+				latestArtifacts: [],
+				latestContinuationHandles: {},
+				latestEventSequence: 0,
+				callerInputHistory: {
+					reviewRequests: [],
+					rulings: [],
+				},
+				nextIntent: {
+					actionType: "await-story-implement",
+					summary: "Wait for implementor completion.",
+				},
+				replayBoundary: null,
+				updatedAt: "2026-05-03T12:10:00.000Z",
+			},
+		});
+
+		await expect(
+			ledger.recordChildOperationCompletion({
+				storyRunId: attempt.storyRunId,
+				event: {
+					storyRunId: attempt.storyRunId,
+					sequence: 1,
+					timestamp: "2026-05-03T12:11:00.000Z",
+					type: "child-operation-completed",
+					summary: "story-implement returned an empty artifact.",
+					artifact: artifactPath,
+				},
+				snapshot: {
+					storyRunId: attempt.storyRunId,
+					storyId,
+					attempt: attempt.attempt,
+					status: "running",
+					lifecycleState: "awaiting_story_lead_action",
+					currentSummary: "This state advance should be blocked.",
+					currentPhase: "story-lead-awaiting-action",
+					currentChildOperation: null,
+					latestArtifacts: [
+						{
+							kind: "implementor-result",
+							path: artifactPath,
+							provenance: "current-run",
+						},
+					],
+					latestContinuationHandles: {},
+					latestEventSequence: 1,
+					callerInputHistory: {
+						reviewRequests: [],
+						rulings: [],
+					},
+					nextIntent: {
+						actionType: "await-story-lead-action",
+						summary: "This state advance should be blocked.",
+						artifactRef: artifactPath,
+					},
+					replayBoundary: null,
+					updatedAt: "2026-05-03T12:11:00.000Z",
+				},
+				requiredArtifacts: [
+					{
+						kind: "implementor-result",
+						path: artifactPath,
+						provenance: "current-run",
+					},
+				],
+			}),
+		).rejects.toThrow(/empty/u);
+
+		await expect(
+			ledger.readCurrentSnapshot(attempt.currentSnapshotPath),
+		).resolves.toEqual(
+			expect.objectContaining({
+				lifecycleState: "running_child_operation",
+				currentChildOperation: expect.objectContaining({
+					artifactPath,
+				}),
+			}),
+		);
+		expect(await Bun.file(attempt.eventHistoryPath).exists()).toBe(false);
 	});
 });

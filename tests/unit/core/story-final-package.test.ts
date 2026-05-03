@@ -16,12 +16,14 @@ describe("story final package", () => {
 					{
 						kind: "implementor-result",
 						path: "/tmp/spec-pack/artifacts/00-foundation/001-implementor.json",
+						provenance: "current-run",
 					},
 				],
 				verifierArtifacts: [
 					{
 						kind: "verifier-result",
 						path: "/tmp/spec-pack/artifacts/00-foundation/002-verifier.json",
+						provenance: "current-run",
 					},
 				],
 			},
@@ -42,6 +44,18 @@ describe("story final package", () => {
 		});
 
 		expect(finalPackage.outcome).toBe("accepted");
+		expect(finalPackage.evidence.implementorArtifacts).toEqual([
+			expect.objectContaining({
+				path: "/tmp/spec-pack/artifacts/00-foundation/001-implementor.json",
+				provenance: "current-run",
+			}),
+		]);
+		expect(finalPackage.evidence.verifierArtifacts).toEqual([
+			expect.objectContaining({
+				path: "/tmp/spec-pack/artifacts/00-foundation/002-verifier.json",
+				provenance: "current-run",
+			}),
+		]);
 		expect(finalPackage.riskAndDeviationReview.specDeviations).toEqual([]);
 		expect(finalPackage.riskAndDeviationReview.assumedRisks).toEqual([]);
 		expect(finalPackage.riskAndDeviationReview.scopeChanges).toEqual([]);
@@ -481,5 +495,123 @@ describe("story final package", () => {
 		expect(finalPackage.cleanupHandoff.deferredItems).toEqual([]);
 		expect(finalPackage.cleanupHandoff.cleanupRequired).toBe(false);
 		expect(finalPackage.recommendedImplLeadAction).toBe("ask-ruling");
+	});
+
+	test("TC-5.3a marks evidence provenance in the final package so current-run proof is distinguishable from prior, caller-input, and preexisting files", () => {
+		const finalPackage = buildStoryLeadFinalPackage({
+			outcome: "blocked",
+			storyId: "00-foundation",
+			storyRunId: "00-foundation-story-run-010",
+			attempt: 10,
+			storyTitle: "Story 0: Foundation",
+			implementedScope: "Evidence provenance flow.",
+			evidence: {
+				implementorArtifacts: [
+					{
+						kind: "implementor-result",
+						path: "/tmp/spec-pack/artifacts/00-foundation/003-implementor.json",
+						provenance: "current-run",
+					},
+					{
+						kind: "implementor-result",
+						path: "/tmp/spec-pack/artifacts/00-foundation/seeded-implementor.json",
+						provenance: "fixture/preexisting",
+					},
+				],
+				verifierArtifacts: [
+					{
+						kind: "verifier-result",
+						path: "/tmp/spec-pack/artifacts/00-foundation/004-verifier.json",
+						provenance: "prior-run",
+					},
+				],
+				callerInputArtifacts: [
+					{
+						kind: "review-request",
+						path: "/tmp/spec-pack/artifacts/00-foundation/story-lead/010-review-request-001.json",
+						provenance: "caller-input",
+					},
+				],
+			},
+			verification: {
+				finalVerifierOutcome: "pass",
+				findings: [],
+			},
+		});
+
+		expect(finalPackage.evidence.implementorArtifacts).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					provenance: "current-run",
+				}),
+				expect.objectContaining({
+					provenance: "fixture/preexisting",
+				}),
+			]),
+		);
+		expect(finalPackage.evidence.verifierArtifacts).toEqual([
+			expect.objectContaining({
+				provenance: "prior-run",
+			}),
+		]);
+		expect(finalPackage.evidence.callerInputArtifacts).toEqual([
+			expect.objectContaining({
+				provenance: "caller-input",
+			}),
+		]);
+	});
+
+	test("TC-5.3b does not treat preseeded artifacts as current-run proof in receipt readiness", () => {
+		const finalPackage = buildStoryLeadFinalPackage({
+			outcome: "accepted",
+			storyId: "00-foundation",
+			storyRunId: "00-foundation-story-run-011",
+			attempt: 11,
+			storyTitle: "Story 0: Foundation",
+			implementedScope: "Preseeded evidence rejection flow.",
+			evidence: {
+				implementorArtifacts: [
+					{
+						kind: "implementor-result",
+						path: "/tmp/spec-pack/artifacts/00-foundation/seeded-implementor.json",
+						provenance: "fixture/preexisting",
+					},
+				],
+				verifierArtifacts: [
+					{
+						kind: "verifier-result",
+						path: "/tmp/spec-pack/artifacts/00-foundation/seeded-verifier.json",
+						provenance: "fixture/preexisting",
+					},
+				],
+			},
+			verification: {
+				finalVerifierOutcome: "pass",
+				findings: [],
+			},
+			gateRun: {
+				command: "npm run green-verify",
+				result: "pass",
+			},
+			baselineBeforeStory: 30,
+			baselineAfterStory: 31,
+			latestActualTotal: 31,
+			commitReadiness: {
+				state: "ready-for-impl-lead-commit",
+			},
+		});
+
+		expect(finalPackage.outcome).toBe("blocked");
+		expect(
+			finalPackage.acceptanceChecks.find(
+				(check) => check.name === "receipt-readiness",
+			)?.status,
+		).toBe("fail");
+		expect(
+			finalPackage.logHandoff.storyReceiptDraft.implementorEvidenceRefs,
+		).toEqual([]);
+		expect(
+			finalPackage.logHandoff.storyReceiptDraft.verifierEvidenceRefs,
+		).toEqual([]);
 	});
 });

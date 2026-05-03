@@ -940,6 +940,102 @@ describe("story-lead loop", () => {
 		).toBe("pass");
 	});
 
+	test("TC-5.3b treats provenance-less legacy resume artifacts as fixture/preexisting evidence instead of current-run proof", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-lead-loop-legacy-resume-provenance",
+			{
+				includeStoryLead: true,
+			},
+		);
+		const implementorPath = `${specPackRoot}/artifacts/${storyId}/001-implementor.json`;
+		await seedPrimitiveArtifact({
+			specPackRoot,
+			storyId,
+			fileName: "001-implementor.json",
+			payload: {
+				command: "story-implement",
+				outcome: "ready-for-verification",
+			},
+		});
+		const priorAttempt = await seedStoryRunAttempt({
+			specPackRoot,
+			storyId,
+			status: "interrupted",
+			finalPackage: null,
+			latestArtifacts: [
+				{
+					kind: "implementor-result",
+					path: implementorPath,
+				},
+			],
+		});
+		const ledger = createStoryRunLedger({
+			specPackRoot,
+			storyId,
+		});
+		const existingAttempt = await ledger.getAttemptByStoryRunId(
+			priorAttempt.storyRunId,
+		);
+		if (!existingAttempt) {
+			throw new Error("Expected seeded legacy attempt to be readable.");
+		}
+		const providerBinDir = await createTempDir(
+			"story-lead-loop-legacy-resume-provenance-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper("codex-story-lead-legacy-resume-001", {
+						action: "accept-story",
+						rationale:
+							"Finalize from the legacy snapshot so provenance-less artifacts remain readable but not current proof.",
+						inputs: {
+							summary:
+								"Finalize from the legacy snapshot so provenance-less artifacts remain readable but not current proof.",
+							acceptanceCheckRefs: ["legacy-provenance-readable"],
+							recommendedImplLeadAction: "reopen" as const,
+						},
+					}),
+				},
+			],
+		});
+
+		const runtime = await runStoryLead({
+			specPackRoot,
+			storyId,
+			ledger,
+			mode: "resume",
+			existingAttempt,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
+		});
+
+		if (runtime.case !== "completed" || !runtime.finalPackage) {
+			throw new Error(
+				"Expected legacy provenance resume fixture to complete with a final package.",
+			);
+		}
+
+		expect(runtime.finalPackage.evidence.implementorArtifacts).toEqual([
+			expect.objectContaining({
+				path: implementorPath,
+				provenance: "fixture/preexisting",
+			}),
+		]);
+		expect(
+			runtime.finalPackage.logHandoff.storyReceiptDraft.implementorEvidenceRefs,
+		).toEqual([]);
+		expect(
+			runtime.finalPackage.acceptanceChecks.find(
+				(check) => check.name === "receipt-readiness",
+			)?.status,
+		).toBe("fail");
+	});
+
 	test("derives a revise verifier outcome from recorded verifier evidence instead of artifact presence", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-verifier-revise",

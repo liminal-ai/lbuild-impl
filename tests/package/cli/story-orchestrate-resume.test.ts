@@ -116,6 +116,7 @@ describe("story-orchestrate resume CLI", () => {
 				acceptedReviewRequestArtifact?: {
 					kind: string;
 					path: string;
+					provenance?: string;
 				};
 				finalPackage: {
 					callerInputHistory: {
@@ -132,6 +133,7 @@ describe("story-orchestrate resume CLI", () => {
 		expect(envelope.result.acceptedReviewRequestArtifact).toEqual({
 			kind: "review-request",
 			path: expect.stringContaining("review-request-001.json"),
+			provenance: "caller-input",
 		});
 		expect(
 			envelope.result.finalPackage.callerInputHistory.reviewRequests[0]

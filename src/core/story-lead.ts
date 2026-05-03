@@ -86,6 +86,7 @@ import type {
 	StoryRunAttemptRecord,
 	StoryRunLedger,
 } from "./story-run-ledger.js";
+import { StoryRunArtifactIntegrityError } from "./story-run-ledger.js";
 
 // Maintainer/debug-only simulation switches for deterministic tests and local
 // diagnosis. These are not part of the public story-orchestrate contract.
@@ -142,6 +143,7 @@ type OperationEnvelope<TResult> = {
 
 type StoryLeadFailureReason =
 	| "provider-output-invalid"
+	| "artifact-integrity-failed"
 	| "context-window-limit"
 	| "planner-timeout"
 	| "interrupted";
@@ -284,10 +286,47 @@ async function buildArtifactRefs(paths: string[]): Promise<ArtifactRef[]> {
 		refs.push({
 			kind: artifactKindForCommand(command),
 			path,
+			provenance: "fixture/preexisting",
 		});
 	}
 
 	return refs;
+}
+
+function reclassifyArtifacts(
+	artifacts: ArtifactRef[],
+	provenance: NonNullable<ArtifactRef["provenance"]>,
+): ArtifactRef[] {
+	return artifacts.map((artifact) => ({
+		...artifact,
+		provenance,
+	}));
+}
+
+function recoverLegacyArtifactProvenance(
+	artifact: ArtifactRef,
+): NonNullable<ArtifactRef["provenance"]> {
+	if (artifact.provenance) {
+		return artifact.provenance;
+	}
+
+	switch (artifact.kind) {
+		case "prior-final-package":
+		case "final-package":
+			return "prior-run";
+		case "review-request":
+		case "ruling-response":
+			return "caller-input";
+		default:
+			return "fixture/preexisting";
+	}
+}
+
+function normalizeRecoveredArtifacts(artifacts: ArtifactRef[]): ArtifactRef[] {
+	return artifacts.map((artifact) => ({
+		...artifact,
+		provenance: recoverLegacyArtifactProvenance(artifact),
+	}));
 }
 
 function mergeArtifacts(
@@ -682,6 +721,15 @@ function replayBoundaryForFailure(input: {
 				requiresFreshStoryLeadSession: false,
 				requiresFreshChildProviderSession: true,
 			};
+		case "artifact-integrity-failed":
+			return {
+				smallestSafeStep: "resume-from-last-valid-artifact",
+				reasoning:
+					"A bounded child operation returned, but its required artifact was missing or empty, so replay must stop at the last durable artifact boundary instead of advancing as though new evidence exists.",
+				validArtifactPaths: input.validArtifactPaths,
+				requiresFreshStoryLeadSession: false,
+				requiresFreshChildProviderSession: true,
+			};
 		case "context-window-limit":
 			return {
 				smallestSafeStep: "rehydrate-from-durable-ledger",
@@ -799,6 +847,7 @@ function semanticArtifactRefsFromEnvelope<TResult>(
 				? artifactKindForCommand(command)
 				: artifact.kind,
 		path: artifact.path,
+		provenance: "current-run",
 	}));
 }
 
@@ -915,13 +964,25 @@ function buildInitialArtifacts(input: {
 }): ArtifactRef[] {
 	if (input.reopeningAcceptedAttempt) {
 		return mergeArtifacts(
-			input.priorAcceptedFinalPackage?.evidence.implementorArtifacts ?? [],
+			reclassifyArtifacts(
+				input.priorAcceptedFinalPackage?.evidence.implementorArtifacts ?? [],
+				"prior-run",
+			),
 			mergeArtifacts(
-				input.priorAcceptedFinalPackage?.evidence.selfReviewArtifacts ?? [],
+				reclassifyArtifacts(
+					input.priorAcceptedFinalPackage?.evidence.selfReviewArtifacts ?? [],
+					"prior-run",
+				),
 				mergeArtifacts(
-					input.priorAcceptedFinalPackage?.evidence.verifierArtifacts ?? [],
+					reclassifyArtifacts(
+						input.priorAcceptedFinalPackage?.evidence.verifierArtifacts ?? [],
+						"prior-run",
+					),
 					mergeArtifacts(
-						input.priorAcceptedFinalPackage?.evidence.quickFixArtifacts ?? [],
+						reclassifyArtifacts(
+							input.priorAcceptedFinalPackage?.evidence.quickFixArtifacts ?? [],
+							"prior-run",
+						),
 						input.callerInputArtifacts,
 					),
 				),
@@ -930,7 +991,9 @@ function buildInitialArtifacts(input: {
 	}
 
 	if (input.existingAttempt) {
-		return input.priorSnapshot?.latestArtifacts ?? [];
+		return normalizeRecoveredArtifacts(
+			input.priorSnapshot?.latestArtifacts ?? [],
+		);
 	}
 
 	return input.primitiveArtifacts;
@@ -1205,6 +1268,7 @@ export async function runStoryLead(
 					{
 						kind: "prior-final-package",
 						path: input.existingAttempt?.finalPackagePath ?? "",
+						provenance: "prior-run",
 					},
 				]
 			: []
@@ -1458,6 +1522,7 @@ export async function runStoryLead(
 				{
 					kind: "final-package",
 					path: attemptPaths.finalPackagePath,
+					provenance: "current-run",
 				},
 			]),
 			nextIntent: {
@@ -1502,6 +1567,60 @@ export async function runStoryLead(
 				: {}),
 			...(acceptedRulingArtifact ? { acceptedRulingArtifact } : {}),
 		};
+	};
+
+	const interruptForArtifactIntegrityFailure = async (input: {
+		command: string;
+		error: StoryRunArtifactIntegrityError;
+	}): Promise<StoryLeadRuntimeResult> =>
+		buildInterruptedResult({
+			reason: "artifact-integrity-failed",
+			eventType: "artifact-integrity-failed",
+			eventSummary: `${input.command} returned before its required result artifact became durable.`,
+			currentSummary:
+				"A bounded child operation completed, but its required artifact was missing or empty so story-run state could not advance.",
+			nextIntentSummary:
+				"Resume from the last valid artifact boundary after fixing the child operation artifact write path.",
+			eventData: {
+				command: input.command,
+				errorCode: input.error.issue,
+				artifactPath: input.error.artifactPath,
+			},
+		});
+
+	const recordCompletedChildOperation = async (params: {
+		completionEvent: StoryRunEvent;
+		requiredArtifacts: ArtifactRef[];
+		currentSummary: string;
+		latestArtifacts: ArtifactRef[];
+		latestContinuationHandles?: StoryRunCurrentSnapshot["latestContinuationHandles"];
+		nextIntent: StoryRunCurrentSnapshot["nextIntent"];
+	}): Promise<void> => {
+		const nextSnapshot = buildSnapshot({
+			storyId,
+			attemptPaths,
+			status: "running",
+			lifecycleState: "awaiting_story_lead_action",
+			currentSummary: params.currentSummary,
+			currentPhase: "story-lead-awaiting-action",
+			latestArtifacts: params.latestArtifacts,
+			latestContinuationHandles:
+				params.latestContinuationHandles ??
+				currentSnapshot.latestContinuationHandles,
+			latestEventSequence: params.completionEvent.sequence,
+			callerInputHistory,
+			nextIntent: params.nextIntent,
+			replayBoundary: null,
+			currentChildOperation: null,
+		});
+
+		await input.ledger.recordChildOperationCompletion({
+			storyRunId: attemptPaths.storyRunId,
+			event: params.completionEvent,
+			snapshot: nextSnapshot,
+			requiredArtifacts: params.requiredArtifacts,
+		});
+		currentSnapshot = nextSnapshot;
 	};
 
 	const runChildWithinWholeRunBudget = async <TResult>(params: {
@@ -1603,6 +1722,7 @@ export async function runStoryLead(
 			{
 				kind: "review-request",
 				path: reviewArtifactPath,
+				provenance: "caller-input",
 			},
 		];
 		const reviewEvent = buildEvent({
@@ -1628,6 +1748,7 @@ export async function runStoryLead(
 				{
 					kind: "review-request",
 					path: reviewArtifactPath,
+					provenance: "caller-input",
 				},
 			]),
 			callerInputHistory,
@@ -1653,6 +1774,7 @@ export async function runStoryLead(
 			{
 				kind: "ruling-response",
 				path: rulingArtifactPath,
+				provenance: "caller-input",
 			},
 		];
 		const rulingEvent = buildEvent({
@@ -1678,6 +1800,7 @@ export async function runStoryLead(
 				{
 					kind: "ruling-response",
 					path: rulingArtifactPath,
+					provenance: "caller-input",
 				},
 			]),
 			callerInputHistory,
@@ -1884,32 +2007,38 @@ export async function runStoryLead(
 								status: envelope.status,
 							},
 						});
-						await appendRunEvent(completionEvent);
-						await overwriteSnapshot({
-							status: "running",
-							lifecycleState: "awaiting_story_lead_action",
-							currentSummary: completionEvent.summary,
-							currentPhase: "story-lead-awaiting-action",
-							latestArtifacts: mergeArtifacts(
-								currentSnapshot.latestArtifacts,
-								artifactRefs,
-							),
-							latestContinuationHandles: continuation
-								? {
-										...currentSnapshot.latestContinuationHandles,
-										storyImplementor: continuation,
-									}
-								: currentSnapshot.latestContinuationHandles,
-							nextIntent: {
-								actionType: "await-story-lead-action",
-								summary: action.rationale,
-								...(artifactRefs.at(-1)
-									? { artifactRef: artifactRefs.at(-1)?.path }
-									: {}),
-							},
-							currentChildOperation: null,
-							replayBoundary: null,
-						});
+						try {
+							await recordCompletedChildOperation({
+								completionEvent,
+								requiredArtifacts: artifactRefs,
+								currentSummary: completionEvent.summary,
+								latestArtifacts: mergeArtifacts(
+									currentSnapshot.latestArtifacts,
+									artifactRefs,
+								),
+								latestContinuationHandles: continuation
+									? {
+											...currentSnapshot.latestContinuationHandles,
+											storyImplementor: continuation,
+										}
+									: currentSnapshot.latestContinuationHandles,
+								nextIntent: {
+									actionType: "await-story-lead-action",
+									summary: action.rationale,
+									...(artifactRefs.at(-1)
+										? { artifactRef: artifactRefs.at(-1)?.path }
+										: {}),
+								},
+							});
+						} catch (error) {
+							if (error instanceof StoryRunArtifactIntegrityError) {
+								return await interruptForArtifactIntegrityFailure({
+									command: "story-implement",
+									error,
+								});
+							}
+							throw error;
+						}
 						maybeCrashAfterChildResult("story-implement");
 						return completionEvent.summary;
 					}
@@ -1991,30 +2120,36 @@ export async function runStoryLead(
 								status: envelope.status,
 							},
 						});
-						await appendRunEvent(completionEvent);
-						await overwriteSnapshot({
-							status: "running",
-							lifecycleState: "awaiting_story_lead_action",
-							currentSummary: completionEvent.summary,
-							currentPhase: "story-lead-awaiting-action",
-							latestArtifacts: mergeArtifacts(
-								currentSnapshot.latestArtifacts,
-								artifactRefs,
-							),
-							latestContinuationHandles: {
-								...currentSnapshot.latestContinuationHandles,
-								storyImplementor: updatedContinuation,
-							},
-							nextIntent: {
-								actionType: "await-story-lead-action",
-								summary: action.rationale,
-								...(artifactRefs.at(-1)
-									? { artifactRef: artifactRefs.at(-1)?.path }
-									: {}),
-							},
-							currentChildOperation: null,
-							replayBoundary: null,
-						});
+						try {
+							await recordCompletedChildOperation({
+								completionEvent,
+								requiredArtifacts: artifactRefs,
+								currentSummary: completionEvent.summary,
+								latestArtifacts: mergeArtifacts(
+									currentSnapshot.latestArtifacts,
+									artifactRefs,
+								),
+								latestContinuationHandles: {
+									...currentSnapshot.latestContinuationHandles,
+									storyImplementor: updatedContinuation,
+								},
+								nextIntent: {
+									actionType: "await-story-lead-action",
+									summary: action.rationale,
+									...(artifactRefs.at(-1)
+										? { artifactRef: artifactRefs.at(-1)?.path }
+										: {}),
+								},
+							});
+						} catch (error) {
+							if (error instanceof StoryRunArtifactIntegrityError) {
+								return await interruptForArtifactIntegrityFailure({
+									command: "story-continue",
+									error,
+								});
+							}
+							throw error;
+						}
 						maybeCrashAfterChildResult("story-continue");
 						return completionEvent.summary;
 					}
@@ -2101,30 +2236,36 @@ export async function runStoryLead(
 								status: envelope.status,
 							},
 						});
-						await appendRunEvent(completionEvent);
-						await overwriteSnapshot({
-							status: "running",
-							lifecycleState: "awaiting_story_lead_action",
-							currentSummary: completionEvent.summary,
-							currentPhase: "story-lead-awaiting-action",
-							latestArtifacts: mergeArtifacts(
-								currentSnapshot.latestArtifacts,
-								artifactRefs,
-							),
-							latestContinuationHandles: {
-								...currentSnapshot.latestContinuationHandles,
-								storyImplementor: updatedContinuation,
-							},
-							nextIntent: {
-								actionType: "await-story-lead-action",
-								summary: action.rationale,
-								...(artifactRefs.at(-1)
-									? { artifactRef: artifactRefs.at(-1)?.path }
-									: {}),
-							},
-							currentChildOperation: null,
-							replayBoundary: null,
-						});
+						try {
+							await recordCompletedChildOperation({
+								completionEvent,
+								requiredArtifacts: artifactRefs,
+								currentSummary: completionEvent.summary,
+								latestArtifacts: mergeArtifacts(
+									currentSnapshot.latestArtifacts,
+									artifactRefs,
+								),
+								latestContinuationHandles: {
+									...currentSnapshot.latestContinuationHandles,
+									storyImplementor: updatedContinuation,
+								},
+								nextIntent: {
+									actionType: "await-story-lead-action",
+									summary: action.rationale,
+									...(artifactRefs.at(-1)
+										? { artifactRef: artifactRefs.at(-1)?.path }
+										: {}),
+								},
+							});
+						} catch (error) {
+							if (error instanceof StoryRunArtifactIntegrityError) {
+								return await interruptForArtifactIntegrityFailure({
+									command: "story-self-review",
+									error,
+								});
+							}
+							throw error;
+						}
 						maybeCrashAfterChildResult("story-self-review");
 						return completionEvent.summary;
 					}
@@ -2228,30 +2369,36 @@ export async function runStoryLead(
 									status: envelope.status,
 								},
 							});
-							await appendRunEvent(completionEvent);
-							await overwriteSnapshot({
-								status: "running",
-								lifecycleState: "awaiting_story_lead_action",
-								currentSummary: completionEvent.summary,
-								currentPhase: "story-lead-awaiting-action",
-								latestArtifacts: mergeArtifacts(
-									currentSnapshot.latestArtifacts,
-									artifactRefs,
-								),
-								latestContinuationHandles: {
-									...currentSnapshot.latestContinuationHandles,
-									storyVerifier: updatedContinuation,
-								},
-								nextIntent: {
-									actionType: "await-story-lead-action",
-									summary: action.rationale,
-									...(artifactRefs.at(-1)
-										? { artifactRef: artifactRefs.at(-1)?.path }
-										: {}),
-								},
-								currentChildOperation: null,
-								replayBoundary: null,
-							});
+							try {
+								await recordCompletedChildOperation({
+									completionEvent,
+									requiredArtifacts: artifactRefs,
+									currentSummary: completionEvent.summary,
+									latestArtifacts: mergeArtifacts(
+										currentSnapshot.latestArtifacts,
+										artifactRefs,
+									),
+									latestContinuationHandles: {
+										...currentSnapshot.latestContinuationHandles,
+										storyVerifier: updatedContinuation,
+									},
+									nextIntent: {
+										actionType: "await-story-lead-action",
+										summary: action.rationale,
+										...(artifactRefs.at(-1)
+											? { artifactRef: artifactRefs.at(-1)?.path }
+											: {}),
+									},
+								});
+							} catch (error) {
+								if (error instanceof StoryRunArtifactIntegrityError) {
+									return await interruptForArtifactIntegrityFailure({
+										command: "story-verify",
+										error,
+									});
+								}
+								throw error;
+							}
 							maybeCrashAfterChildResult("story-verify");
 							return completionEvent.summary;
 						}
@@ -2315,32 +2462,38 @@ export async function runStoryLead(
 								status: envelope.status,
 							},
 						});
-						await appendRunEvent(completionEvent);
-						await overwriteSnapshot({
-							status: "running",
-							lifecycleState: "awaiting_story_lead_action",
-							currentSummary: completionEvent.summary,
-							currentPhase: "story-lead-awaiting-action",
-							latestArtifacts: mergeArtifacts(
-								currentSnapshot.latestArtifacts,
-								artifactRefs,
-							),
-							latestContinuationHandles: continuation
-								? {
-										...currentSnapshot.latestContinuationHandles,
-										storyVerifier: continuation,
-									}
-								: currentSnapshot.latestContinuationHandles,
-							nextIntent: {
-								actionType: "await-story-lead-action",
-								summary: action.rationale,
-								...(artifactRefs.at(-1)
-									? { artifactRef: artifactRefs.at(-1)?.path }
-									: {}),
-							},
-							currentChildOperation: null,
-							replayBoundary: null,
-						});
+						try {
+							await recordCompletedChildOperation({
+								completionEvent,
+								requiredArtifacts: artifactRefs,
+								currentSummary: completionEvent.summary,
+								latestArtifacts: mergeArtifacts(
+									currentSnapshot.latestArtifacts,
+									artifactRefs,
+								),
+								latestContinuationHandles: continuation
+									? {
+											...currentSnapshot.latestContinuationHandles,
+											storyVerifier: continuation,
+										}
+									: currentSnapshot.latestContinuationHandles,
+								nextIntent: {
+									actionType: "await-story-lead-action",
+									summary: action.rationale,
+									...(artifactRefs.at(-1)
+										? { artifactRef: artifactRefs.at(-1)?.path }
+										: {}),
+								},
+							});
+						} catch (error) {
+							if (error instanceof StoryRunArtifactIntegrityError) {
+								return await interruptForArtifactIntegrityFailure({
+									command: "story-verify",
+									error,
+								});
+							}
+							throw error;
+						}
 						maybeCrashAfterChildResult("story-verify");
 						return completionEvent.summary;
 					}
@@ -2402,26 +2555,32 @@ export async function runStoryLead(
 								status: envelope.status,
 							},
 						});
-						await appendRunEvent(completionEvent);
-						await overwriteSnapshot({
-							status: "running",
-							lifecycleState: "awaiting_story_lead_action",
-							currentSummary: completionEvent.summary,
-							currentPhase: "story-lead-awaiting-action",
-							latestArtifacts: mergeArtifacts(
-								currentSnapshot.latestArtifacts,
-								artifactRefs,
-							),
-							nextIntent: {
-								actionType: "await-story-lead-action",
-								summary: action.rationale,
-								...(artifactRefs.at(-1)
-									? { artifactRef: artifactRefs.at(-1)?.path }
-									: {}),
-							},
-							currentChildOperation: null,
-							replayBoundary: null,
-						});
+						try {
+							await recordCompletedChildOperation({
+								completionEvent,
+								requiredArtifacts: artifactRefs,
+								currentSummary: completionEvent.summary,
+								latestArtifacts: mergeArtifacts(
+									currentSnapshot.latestArtifacts,
+									artifactRefs,
+								),
+								nextIntent: {
+									actionType: "await-story-lead-action",
+									summary: action.rationale,
+									...(artifactRefs.at(-1)
+										? { artifactRef: artifactRefs.at(-1)?.path }
+										: {}),
+								},
+							});
+						} catch (error) {
+							if (error instanceof StoryRunArtifactIntegrityError) {
+								return await interruptForArtifactIntegrityFailure({
+									command: "quick-fix",
+									error,
+								});
+							}
+							throw error;
+						}
 						maybeCrashAfterChildResult("quick-fix");
 						return completionEvent.summary;
 					}
@@ -3059,6 +3218,7 @@ export async function runStoryLead(
 				{
 					kind: "final-package",
 					path: attemptPaths.finalPackagePath,
+					provenance: "current-run",
 				},
 			]),
 			nextIntent: {
