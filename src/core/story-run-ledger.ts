@@ -214,20 +214,6 @@ async function readJsonLines<T>(path: string): Promise<T[]> {
 		.map((line) => JSON.parse(line) as T);
 }
 
-function normalizeSnapshotForRead(
-	snapshot: StoryRunCurrentSnapshot,
-): StoryRunCurrentSnapshot {
-	if (!("storyLeadSession" in snapshot)) {
-		return snapshot;
-	}
-
-	const { storyLeadSession: _deprecatedStoryLeadSession, ...rest } =
-		snapshot as StoryRunCurrentSnapshot & {
-			storyLeadSession?: unknown;
-		};
-	return rest;
-}
-
 export async function assertStoryRunArtifactsReady(
 	artifacts: ArtifactRef[],
 ): Promise<void> {
@@ -300,9 +286,8 @@ export function createStoryRunLedger(input: {
 					continue;
 				}
 
-				const currentSnapshot = normalizeSnapshotForRead(
-					storyRunCurrentSnapshotSchema.parse(currentSnapshotRaw),
-				);
+				const currentSnapshot =
+					storyRunCurrentSnapshotSchema.parse(currentSnapshotRaw);
 				const attempt = extractAttemptFromCurrentPath(currentSnapshotPath);
 				if (!attempt) {
 					continue;
@@ -335,9 +320,7 @@ export function createStoryRunLedger(input: {
 
 		async readCurrentSnapshot(path: string) {
 			const payload = await maybeReadJson<StoryRunCurrentSnapshot>(path);
-			return normalizeSnapshotForRead(
-				storyRunCurrentSnapshotSchema.parse(payload),
-			);
+			return storyRunCurrentSnapshotSchema.parse(payload);
 		},
 
 		async readEventHistory(path: string) {

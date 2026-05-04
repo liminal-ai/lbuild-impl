@@ -254,7 +254,7 @@ describe("story-run ledger", () => {
 		expect(await Bun.file(attempt.progressStatusPath).exists()).toBe(true);
 	});
 
-	test("ignores deprecated storyLeadSession fields when reading older snapshots", async () => {
+	test("rejects snapshots that still carry the removed storyLeadSession field", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-run-ledger-deprecated-session",
 		);
@@ -295,12 +295,9 @@ describe("story-run ledger", () => {
 			})}\n`,
 		);
 
-		const snapshot = await ledger.readCurrentSnapshot(
-			attempt.currentSnapshotPath,
-		);
-
-		expect(snapshot).not.toHaveProperty("storyLeadSession");
-		expect(snapshot.lifecycleState).toBe("awaiting_story_lead_action");
+		await expect(
+			ledger.readCurrentSnapshot(attempt.currentSnapshotPath),
+		).rejects.toThrow(/unrecognized key|storyLeadSession/u);
 	});
 
 	test("TC-3.6a and TC-3.6b preserve prior final packages and record reopen rationale as new history", async () => {

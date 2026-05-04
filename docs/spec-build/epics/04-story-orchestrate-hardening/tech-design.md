@@ -535,7 +535,7 @@ export interface StoryRunCurrentSnapshotV2 {
 }
 ```
 
-`storyLeadSession` is removed from newly written snapshots. Snapshot reads should tolerate and ignore the deprecated field on pre-existing artifacts so old Epic 03 attempts do not make `status` or `resume` unusable. This is artifact recovery tolerance, not continued support for the removed `story_lead` config alias.
+`storyLeadSession` is removed from the story-run contract. Snapshots and result payloads that still carry that field are now invalid rather than silently tolerated.
 
 ### Story Lead Planner Context
 

@@ -150,7 +150,7 @@ Related dependency reference: Story 2 owns child-operation recoverability; this 
 
 #### Non-TC Decided Tests
 
-- `tests/unit/core/story-run-ledger.test.ts`: snapshot reader tolerates and ignores deprecated `storyLeadSession`.
+- `tests/unit/core/story-run-ledger.test.ts`: snapshot reader rejects removed `storyLeadSession`.
 - `tests/unit/core/story-run-ledger.test.ts`: snapshot writer persists `lifecycleState` beside public `status`.
 
 #### Verification

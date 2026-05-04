@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { reasoningEffortSchema } from "./config-schema.js";
 import {
 	continuationHandleSchema,
 	providerIdSchema,
@@ -20,15 +19,6 @@ export const storyLeadOutcomeSchema = z.enum([
 ]);
 
 export const storyRunStatusSchema = storyRunPublicStatusSchema;
-
-export const storyLeadSessionRefSchema = z
-	.object({
-		provider: providerIdSchema,
-		sessionId: z.string().min(1),
-		model: z.string().min(1),
-		reasoningEffort: reasoningEffortSchema,
-	})
-	.strict();
 
 export const artifactProvenanceSchema = z.enum([
 	"current-run",
@@ -136,7 +126,6 @@ export const storyRunCurrentSnapshotSchema = z
 		currentChildOperation: currentChildOperationSchema.nullable(),
 		latestArtifacts: z.array(artifactRefSchema),
 		latestContinuationHandles: z.record(z.string(), continuationHandleSchema),
-		storyLeadSession: storyLeadSessionRefSchema.optional(),
 		latestEventSequence: z.number().int().nonnegative(),
 		callerInputHistory: callerInputHistorySchema,
 		nextIntent: storyRunNextIntentSchema.nullable(),
@@ -729,7 +718,6 @@ export const storyOrchestrateRunResultSchema = z.discriminatedUnion("case", [
 			finalPackage: storyLeadFinalPackageSchema,
 			recoveryGuidance: z.string().min(1),
 			latestEventSequence: z.number().int().nonnegative(),
-			storyLeadSession: storyLeadSessionRefSchema.optional(),
 		})
 		.strict(),
 	z
@@ -802,7 +790,6 @@ export const storyOrchestrateResumeResultSchema = z.discriminatedUnion("case", [
 			finalPackage: storyLeadFinalPackageSchema,
 			recoveryGuidance: z.string().min(1),
 			latestEventSequence: z.number().int().nonnegative(),
-			storyLeadSession: storyLeadSessionRefSchema.optional(),
 			acceptedReviewRequestArtifact: artifactRefSchema.optional(),
 			acceptedRulingArtifact: artifactRefSchema.optional(),
 		})
@@ -896,7 +883,6 @@ export const storyOrchestrateStatusResultSchema = z.discriminatedUnion("case", [
 
 export type StoryLeadOutcome = z.infer<typeof storyLeadOutcomeSchema>;
 export type StoryRunStatus = z.infer<typeof storyRunStatusSchema>;
-export type StoryLeadSessionRef = z.infer<typeof storyLeadSessionRefSchema>;
 export type ArtifactRef = z.infer<typeof artifactRefSchema>;
 export type StoryRunCandidate = z.infer<typeof storyRunCandidateSchema>;
 export type CurrentChildOperation = z.infer<typeof currentChildOperationSchema>;

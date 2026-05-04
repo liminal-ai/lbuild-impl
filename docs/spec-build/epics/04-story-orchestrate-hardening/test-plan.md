@@ -46,7 +46,7 @@ These tests come from implementation risk discovered during design. They do not 
 
 | Test | File | Reason |
 |------|------|--------|
-| Snapshot reader tolerates and ignores deprecated `storyLeadSession` on old artifacts | `tests/unit/core/story-run-ledger.test.ts` | Epic 04 removes story-lead provider sessions from new snapshots, but old Epic 03 artifacts should not make `status` or `resume` unusable |
+| Snapshot reader rejects removed `storyLeadSession` fields | `tests/unit/core/story-run-ledger.test.ts` | The cleaned story-run contract no longer tolerates planner-session persistence in snapshots |
 | Snapshot writer persists `lifecycleState` beside public `status` | `tests/unit/core/story-run-ledger.test.ts` | Keeps state-machine detail separate from terminal/public status vocabulary |
 | Story-lead action schema rejects extra keys after action discrimination | `tests/unit/core/story-lead-state-machine.test.ts` | Prevents loose action envelopes from hiding model drift |
 | Planner provider invocation ignores returned story-lead session id on later planner turns | `tests/unit/core/story-lead-stateless.test.ts` | Protects the no-hidden-conversation-memory principle |

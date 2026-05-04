@@ -223,7 +223,7 @@ The runtime should replace or reshape the current story-lead prompt path so it d
 
 - `tests/unit/core/story-lead-stateless.test.ts`: planner provider invocation ignores any returned story-lead session id on later planner turns.
 - `tests/unit/core/story-lead-context.test.ts`: context builder records largest sources on overflow.
-- `tests/unit/core/story-run-ledger.test.ts`: snapshot reader tolerates and ignores deprecated `storyLeadSession` on old artifacts.
+- `tests/unit/core/story-run-ledger.test.ts`: snapshot reader rejects removed `storyLeadSession` fields.
 
 #### Anti-Shim Requirements
 
