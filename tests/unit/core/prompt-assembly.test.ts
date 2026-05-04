@@ -154,6 +154,18 @@ describe("prompt assembly", () => {
 		expect(assembled.prompt).toContain(
 			"Story run id: 02-prompt-story-lead-001",
 		);
+		expect(assembled.prompt).toContain(
+			"Read the current story and the test plan before you choose the next bounded action.",
+		);
+		expect(assembled.prompt).toContain(`- Story: ${fixture.storyPath}`);
+		expect(assembled.prompt).toContain(`- Test Plan: ${fixture.testPlanPath}`);
+		expect(assembled.prompt).not.toContain("full tech-design set");
+		expect(assembled.prompt).not.toContain(
+			`- Tech Design Index: ${fixture.techDesignPath}`,
+		);
+		for (const companionPath of fixture.techDesignCompanionPaths) {
+			expect(assembled.prompt).not.toContain(companionPath);
+		}
 		expect(assembled.prompt).toContain("## Action Protocol");
 		expect(assembled.prompt).toContain('"action":"run-implement"');
 		expect(assembled.prompt).toContain("## Acceptance Rubric");

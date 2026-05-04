@@ -37,8 +37,9 @@ async function runCommand(params: {
 		env: mergedEnv,
 		platform: params.platform,
 	});
+	const platform = params.platform ?? process.platform;
 	const command =
-		process.platform === "win32" && isWindowsCommandShim(resolvedExecutable)
+		platform === "win32" && isWindowsCommandShim(resolvedExecutable)
 			? buildWindowsCommandShimInvocation({
 					executable: resolvedExecutable,
 					args: params.args,

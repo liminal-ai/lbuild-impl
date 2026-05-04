@@ -880,6 +880,12 @@ function operationSummaryFromEnvelope<TResult>(
 	return `${command} completed with outcome ${envelope.outcome} and status ${envelope.status}.${errorSummary}`;
 }
 
+function envelopeIsChildRuntimeFailure<TResult>(
+	envelope: OperationEnvelope<TResult>,
+): boolean {
+	return !envelope.result && envelope.errors.length > 0;
+}
+
 function extractContinuationHandle<TResult extends { continuation?: unknown }>(
 	envelope: OperationEnvelope<TResult>,
 ): ContinuationHandle | undefined {
@@ -1588,6 +1594,29 @@ export async function runStoryLead(
 			},
 		});
 
+	const interruptForChildRuntimeFailure = async <TResult>(input: {
+		command: string;
+		envelope: OperationEnvelope<TResult>;
+	}): Promise<StoryLeadRuntimeResult> =>
+		buildInterruptedResult({
+			reason: "interrupted",
+			eventType: "child-operation-failed",
+			eventSummary: `${input.command} returned a failed runtime envelope before producing a recoverable child result.`,
+			currentSummary:
+				"A bounded child operation failed before producing a usable result, so story-run state stopped at the last durable recovery boundary.",
+			nextIntentSummary:
+				"Use story-orchestrate resume after correcting the child operation failure; replay should start from the last safe story-run checkpoint.",
+			eventData: {
+				command: input.command,
+				outcome: input.envelope.outcome,
+				status: input.envelope.status,
+				errors: input.envelope.errors,
+				artifactPaths: input.envelope.artifacts.map(
+					(artifact) => artifact.path,
+				),
+			},
+		});
+
 	const recordCompletedChildOperation = async (params: {
 		completionEvent: StoryRunEvent;
 		requiredArtifacts: ArtifactRef[];
@@ -1986,6 +2015,12 @@ export async function runStoryLead(
 							return childResult.result;
 						}
 						const envelope = childResult.envelope;
+						if (envelopeIsChildRuntimeFailure(envelope)) {
+							return await interruptForChildRuntimeFailure({
+								command: "story-implement",
+								envelope,
+							});
+						}
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-implement",
 							envelope,
@@ -2101,6 +2136,12 @@ export async function runStoryLead(
 							return childResult.result;
 						}
 						const envelope = childResult.envelope;
+						if (envelopeIsChildRuntimeFailure(envelope)) {
+							return await interruptForChildRuntimeFailure({
+								command: "story-continue",
+								envelope,
+							});
+						}
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-continue",
 							envelope,
@@ -2214,6 +2255,12 @@ export async function runStoryLead(
 							return childResult.result;
 						}
 						const envelope = childResult.envelope;
+						if (envelopeIsChildRuntimeFailure(envelope)) {
+							return await interruptForChildRuntimeFailure({
+								command: "story-self-review",
+								envelope,
+							});
+						}
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-self-review",
 							envelope,
@@ -2350,6 +2397,12 @@ export async function runStoryLead(
 								return childResult.result;
 							}
 							const envelope = childResult.envelope;
+							if (envelopeIsChildRuntimeFailure(envelope)) {
+								return await interruptForChildRuntimeFailure({
+									command: "story-verify",
+									envelope,
+								});
+							}
 							const artifactRefs = semanticArtifactRefsFromEnvelope(
 								"story-verify",
 								envelope,
@@ -2444,6 +2497,12 @@ export async function runStoryLead(
 							return childResult.result;
 						}
 						const envelope = childResult.envelope;
+						if (envelopeIsChildRuntimeFailure(envelope)) {
+							return await interruptForChildRuntimeFailure({
+								command: "story-verify",
+								envelope,
+							});
+						}
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"story-verify",
 							envelope,
@@ -2538,6 +2597,12 @@ export async function runStoryLead(
 							return childResult.result;
 						}
 						const envelope = childResult.envelope;
+						if (envelopeIsChildRuntimeFailure(envelope)) {
+							return await interruptForChildRuntimeFailure({
+								command: "quick-fix",
+								envelope,
+							});
+						}
 						const artifactRefs = semanticArtifactRefsFromEnvelope(
 							"quick-fix",
 							envelope,

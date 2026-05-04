@@ -43,6 +43,34 @@ async function writeWindowsShim(params: {
 	await chmod(scriptPath, 0o755);
 }
 
+async function writeComspecEmulator(dir: string): Promise<string> {
+	const emulatorPath = join(dir, "cmd-emulator.js");
+	await writeTextFile(
+		emulatorPath,
+		[
+			"#!/usr/bin/env node",
+			'import { spawnSync } from "node:child_process";',
+			"const command = process.argv.at(-1) ?? '';",
+			'const tokens = [...command.matchAll(/"((?:\\\\"|[^"])*)"/g)].map((match) => match[1].replaceAll(\'\\\\"\', \'"\'));',
+			"if (tokens.length === 0) {",
+			"  process.stderr.write('missing command');",
+			"  process.exit(1);",
+			"}",
+			"const result = spawnSync(tokens[0], tokens.slice(1), { encoding: 'utf8' });",
+			"if (result.stdout) process.stdout.write(result.stdout);",
+			"if (result.stderr) process.stderr.write(result.stderr);",
+			"if (result.error) {",
+			"  process.stderr.write(result.error.message);",
+			"  process.exit(1);",
+			"}",
+			"process.exit(result.status ?? 0);",
+			"",
+		].join("\n"),
+	);
+	await chmod(emulatorPath, 0o755);
+	return emulatorPath;
+}
+
 describe("provider executable resolution", () => {
 	test("TC-6.2a resolves Windows .cmd shims during provider preflight", async () => {
 		const specPackRoot = await createSpecPack(
@@ -61,6 +89,7 @@ describe("provider executable resolution", () => {
 			name: "codex.cmd",
 			version: "codex 2.0.0",
 		});
+		const comspec = await writeComspecEmulator(providerBinDir);
 
 		const providerMatrix = await resolveProviderMatrix({
 			specPackRoot,
@@ -102,6 +131,7 @@ describe("provider executable resolution", () => {
 			env: {
 				PATH: `${providerBinDir};${process.env.PATH ?? ""}`,
 				PATHEXT: ".CMD;.BAT",
+				COMSPEC: comspec,
 			},
 			platform: "win32",
 		});
@@ -131,6 +161,7 @@ describe("provider executable resolution", () => {
 			name: "copilot.bat",
 			version: "copilot 3.0.0",
 		});
+		const comspec = await writeComspecEmulator(providerBinDir);
 
 		const execution = await runProviderCommand({
 			provider: "copilot",
@@ -140,6 +171,7 @@ describe("provider executable resolution", () => {
 			env: {
 				PATH: `${providerBinDir};${process.env.PATH ?? ""}`,
 				PATHEXT: ".BAT;.CMD",
+				COMSPEC: comspec,
 			},
 			timeoutMs: 1_000,
 			platform: "win32",

@@ -687,7 +687,10 @@ describe("story-lead loop", () => {
 			"story-orchestrate resume",
 		);
 		expect(events.map((event) => event.type)).toContain(
-			"story-lead-turn-limit",
+			"child-operation-failed",
+		);
+		expect(events.map((event) => event.type)).not.toContain(
+			"child-operation-completed",
 		);
 	});
 

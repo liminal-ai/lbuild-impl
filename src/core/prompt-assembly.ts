@@ -177,17 +177,19 @@ function buildReadingJourney(input: PromptAssemblyInput): string {
 	}
 	if (
 		input.epicPath &&
+		input.role !== "story_lead" &&
 		input.role !== "story_implementor" &&
 		input.role !== "story_verifier"
 	) {
 		commonLines.push(`- Epic: ${input.epicPath}`);
 	}
-	if (input.techDesignPath) {
+	if (input.techDesignPath && input.role !== "story_lead") {
 		commonLines.push(`- Tech Design Index: ${input.techDesignPath}`);
 	}
-	const companionLines = (input.techDesignCompanionPaths ?? []).map(
-		(path) => `  - ${path}`,
-	);
+	const companionLines =
+		input.role === "story_lead"
+			? []
+			: (input.techDesignCompanionPaths ?? []).map((path) => `  - ${path}`);
 	if (companionLines.length > 0) {
 		commonLines.push(`- Tech Design Companions:\n${companionLines.join("\n")}`);
 	}
@@ -214,7 +216,7 @@ function buildReadingJourney(input: PromptAssemblyInput): string {
 
 	if (input.role === "story_lead") {
 		return [
-			"Read the current story, the full tech-design set, and the test plan before you choose the next bounded action.",
+			"Read the current story and the test plan before you choose the next bounded action.",
 			common,
 			"Use the durable state summary to decide the smallest safe next step for this story run.",
 			"Read each file in 500-line chunks if large.",
