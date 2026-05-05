@@ -23,7 +23,7 @@ const PROVENANCE_PATTERN =
 	/^# Provider: (?<provider>.+)\n# Command: (?<command>.+)\n# Captured: (?<captured>\d{4}-\d{2}-\d{2})\n# Scenario: (?<scenario>[a-z-]+)\n# Fixture content follows ↓\n?/m;
 
 export async function readProviderFixtures(
-	provider: "claude-code" | "codex" | "copilot",
+	provider: "claude-code" | "codex",
 ): Promise<ParserFixture[]> {
 	const providerDir = join(FIXTURE_ROOT, provider);
 	const entries = (await readdir(providerDir)).filter(

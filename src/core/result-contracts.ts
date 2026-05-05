@@ -61,7 +61,7 @@ export const inspectResultSchema = z.object({
 });
 
 export const harnessAvailabilitySchema = z.object({
-	harness: z.enum(["claude-code", "codex", "copilot", "none"]),
+	harness: z.enum(["claude-code", "codex", "none"]),
 	available: z.boolean(),
 	tier: harnessAvailabilityTierSchema,
 	version: z.string().min(1).optional(),
@@ -143,7 +143,7 @@ export const recommendedFixScopeSchema = z.enum([
 	"human-ruling",
 ]);
 
-export const providerIdSchema = z.enum(["claude-code", "codex", "copilot"]);
+export const providerIdSchema = z.enum(["claude-code", "codex"]);
 
 const storyIdentitySchema = z
 	.object({

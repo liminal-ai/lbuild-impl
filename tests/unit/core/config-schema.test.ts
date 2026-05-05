@@ -171,7 +171,7 @@ describe("impl-run config schema", () => {
 				version: 1,
 				primary_harness: "claude-code",
 				story_lead: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "high",
 				},
@@ -395,7 +395,7 @@ describe("impl-run config schema", () => {
 		expect(parsed.epic_synthesizer.secondary_harness).toBe("codex");
 	});
 
-	test("accepts Copilot as the retained story implementor secondary harness in v1", async () => {
+	test("accepts Codex as the retained story implementor secondary harness in v1", async () => {
 		const { implRunConfigSchema } = await import(
 			"../../../src/core/config-schema"
 		);
@@ -404,17 +404,17 @@ describe("impl-run config schema", () => {
 			version: 1,
 			primary_harness: "claude-code",
 			story_implementor: {
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "high",
 			},
 			quick_fixer: {
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "medium",
 			},
 			story_verifier: {
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
 			},
@@ -424,19 +424,63 @@ describe("impl-run config schema", () => {
 			epic_verifiers: [
 				{
 					label: "epic-verifier-1",
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
 				},
 			],
 			epic_synthesizer: {
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
 			},
 		});
 
-		expect(parsed.story_implementor.secondary_harness).toBe("copilot");
+		expect(parsed.story_implementor.secondary_harness).toBe("codex");
+	});
+
+	test("rejects run configs that still select the removed Copilot secondary harness", async () => {
+		const { implRunConfigSchema } = await import(
+			"../../../src/core/config-schema"
+		);
+
+		expect(() =>
+			implRunConfigSchema.parse({
+				version: 1,
+				primary_harness: "claude-code",
+				story_implementor: {
+					secondary_harness: "copilot",
+					model: "gpt-5.4",
+					reasoning_effort: "high",
+				},
+				quick_fixer: {
+					secondary_harness: "none",
+					model: "claude-sonnet",
+					reasoning_effort: "medium",
+				},
+				story_verifier: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "xhigh",
+				},
+				self_review: {
+					passes: 3,
+				},
+				epic_verifiers: [
+					{
+						label: "epic-verifier-1",
+						secondary_harness: "none",
+						model: "claude-sonnet",
+						reasoning_effort: "xhigh",
+					},
+				],
+				epic_synthesizer: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "xhigh",
+				},
+			}),
+		).toThrow(/Invalid option/u);
 	});
 
 	test("rejects duplicate epic verifier labels", async () => {

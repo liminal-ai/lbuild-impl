@@ -7,8 +7,10 @@ import {
 } from "../../support/story-orchestrate-fixtures";
 import {
 	createTempDir,
+	createRunConfig,
 	readJsonLines,
 	writeFakeProviderExecutable,
+	writeRunConfig,
 } from "../../support/test-helpers";
 
 function codexJsonlEventStream(sessionId: string, finalText: string): string {
@@ -38,6 +40,16 @@ describe("story-lead provider selection", () => {
 			{
 				includeStoryLead: true,
 			},
+		);
+		await writeRunConfig(
+			specPackRoot,
+			createRunConfig({
+				story_lead_provider: {
+					secondary_harness: "codex",
+					model: "gpt-5.4",
+					reasoning_effort: "high",
+				},
+			}),
 		);
 		await seedPrimitiveArtifact({
 			specPackRoot,
@@ -186,13 +198,14 @@ describe("story-lead provider selection", () => {
 		expect(invocations[0]?.args).not.toContain("resume");
 		expect(invocations[0]?.args.join(" ")).not.toContain("--resume");
 		expect(invocations[0]?.args.slice(0, 6)).toEqual([
+			"-s",
+			"danger-full-access",
 			"exec",
 			"--json",
 			"-m",
 			"gpt-5.4",
-			"-c",
-			"model_reasoning_effort=high",
 		]);
+		expect(invocations[0]?.args).toContain("model_reasoning_effort=high");
 		expect(invocations[0]?.args).not.toContain("--output-schema");
 		expect(invocations[0]?.args).toContain("-o");
 		expect(invocations[0]?.args.join(" ")).toContain(

@@ -28,7 +28,7 @@ describe("story-orchestrate run CLI", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-orchestrate-run-001", {
@@ -96,7 +96,7 @@ describe("story-orchestrate run CLI", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-orchestrate-terminal-001", {

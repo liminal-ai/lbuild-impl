@@ -8,11 +8,11 @@ const DEFAULT_EVIDENCE_ROOT = join(ROOT, "gorilla", "evidence");
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const EVIDENCE_DIRECTORY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const EVIDENCE_FILE_PATTERN =
-	/^(claude-code|codex|copilot)-(smoke|resume|structured-output|stall)\.md$/u;
+	/^(claude-code|codex)-(smoke|resume|structured-output|stall)\.md$/u;
 const DEFAULT_REQUIRED_REPORTS = [
 	"claude-code-smoke.md",
 	"codex-resume.md",
-	"copilot-structured-output.md",
+	"codex-structured-output.md",
 	"codex-stall.md",
 ] as const;
 const CLEAN_FINDING_VALUES = new Set([

@@ -41,9 +41,7 @@ describe("story-orchestrate validate sdk operation", () => {
 			envelope.result?.checks.find((check) => check.name === "baseline-seed")
 				?.status,
 		).toBe("pass");
-		expect(envelope.artifacts[0]?.path).toContain(
-			"/artifacts/00-foundation/",
-		);
+		expect(envelope.artifacts[0]?.path).toContain("/artifacts/00-foundation/");
 	});
 
 	test("blocks validation when a resumable attempt already exists", async () => {

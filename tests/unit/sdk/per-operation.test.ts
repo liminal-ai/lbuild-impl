@@ -144,7 +144,9 @@ describe("sdk per-operation envelopes", () => {
 	});
 
 	test("story-orchestrate validate returns a structured envelope on invalid run-config", async () => {
-		const specPackRoot = await createSpecPack("sdk-op-story-orchestrate-validate");
+		const specPackRoot = await createSpecPack(
+			"sdk-op-story-orchestrate-validate",
+		);
 		const envelope = await storyOrchestrateValidate({
 			specPackRoot,
 			storyId: "00-foundation",

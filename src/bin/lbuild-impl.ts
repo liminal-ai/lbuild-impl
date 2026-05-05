@@ -96,7 +96,7 @@ SAFETY
     target codebase and write artifacts into the spec pack.
   - Expect a dirty git worktree after mutating commands.
   - Provider-backed commands may call paid/authenticated external CLIs.
-  - Current provider binaries: claude, codex, copilot.
+  - Current provider binaries: claude, codex.
 
 EXAMPLES
   lbuild-impl inspect --spec-pack-root ./docs/spec-build/epics/my-epic --json

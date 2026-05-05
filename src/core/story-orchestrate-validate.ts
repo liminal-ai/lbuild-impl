@@ -47,8 +47,10 @@ export async function captureStoryBaselineSeed(input: {
 	testFilePattern: string;
 }> {
 	const workspaceRoot = resolve(input.workspaceRoot);
-	const baselineBeforeCurrentStory =
-		await collectMatchingTestFiles(workspaceRoot, workspaceRoot);
+	const baselineBeforeCurrentStory = await collectMatchingTestFiles(
+		workspaceRoot,
+		workspaceRoot,
+	);
 
 	return {
 		workspaceRoot,

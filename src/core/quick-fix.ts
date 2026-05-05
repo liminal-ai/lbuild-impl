@@ -66,9 +66,7 @@ function blockedError(
 	};
 }
 
-function providerForHarness(
-	harness: "codex" | "copilot" | "none",
-): ProviderName {
+function providerForHarness(harness: "codex" | "none"): ProviderName {
 	if (harness === "none") {
 		return "claude-code";
 	}

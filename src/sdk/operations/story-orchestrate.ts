@@ -420,11 +420,15 @@ export async function storyOrchestrateValidate(
 			});
 			if (preflightEnvelope.outcome === "needs-user-decision") {
 				outcome = "needs-user-decision";
-				blockers.push(...preflightEnvelope.errors.map((error) => error.message));
+				blockers.push(
+					...preflightEnvelope.errors.map((error) => error.message),
+				);
 				notes.push(...preflightEnvelope.warnings);
 			} else if (preflightEnvelope.outcome !== "ready") {
 				outcome = "blocked";
-				blockers.push(...preflightEnvelope.errors.map((error) => error.message));
+				blockers.push(
+					...preflightEnvelope.errors.map((error) => error.message),
+				);
 				notes.push(...preflightEnvelope.warnings);
 			}
 
@@ -437,7 +441,9 @@ export async function storyOrchestrateValidate(
 				summary: selectionReady
 					? `Story ${parsedInput.storyId} is ready to start a composed run.`
 					: `Story ${parsedInput.storyId} is not startable: ${selection.case}.`,
-				evidence: selectionArtifacts(selection).map((artifact) => artifact.path),
+				evidence: selectionArtifacts(selection).map(
+					(artifact) => artifact.path,
+				),
 			});
 			if (!selectionReady) {
 				outcome = "blocked";
@@ -476,7 +482,9 @@ export async function storyOrchestrateValidate(
 			}
 
 			if (preflightEnvelope.outcome === "ready" && selectionReady) {
-				const workspaceRoot = await resolveProviderCwd(parsedInput.specPackRoot);
+				const workspaceRoot = await resolveProviderCwd(
+					parsedInput.specPackRoot,
+				);
 				baselineSeed = await captureStoryBaselineSeed({
 					workspaceRoot,
 				});

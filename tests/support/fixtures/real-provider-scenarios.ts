@@ -2,14 +2,13 @@ import { z } from "zod";
 
 import { createClaudeCodeAdapter } from "../../../src/core/provider-adapters/claude-code";
 import { createCodexAdapter } from "../../../src/core/provider-adapters/codex";
-import { createCopilotAdapter } from "../../../src/core/provider-adapters/copilot";
 import type {
 	ProviderAdapter,
 	ProviderExecutionResult,
 } from "../../../src/core/provider-adapters/shared";
 import { ROOT } from "../test-helpers";
 
-export type RealProviderName = "claude-code" | "codex" | "copilot";
+export type RealProviderName = "claude-code" | "codex";
 export type ParserScenarioName =
 	| "smoke"
 	| "resume"
@@ -38,13 +37,11 @@ const DEFAULT_SILENCE_TIMEOUT_MS = 15_000;
 const providerModels: Record<RealProviderName, string> = {
 	"claude-code": "sonnet",
 	codex: "gpt-5.4",
-	copilot: "gpt-5.4",
 };
 
 const providerExecutables: Record<RealProviderName, string> = {
 	"claude-code": "claude",
 	codex: "codex",
-	copilot: "copilot",
 };
 
 function createAdapter(
@@ -56,8 +53,6 @@ function createAdapter(
 			return createClaudeCodeAdapter({ env });
 		case "codex":
 			return createCodexAdapter({ env });
-		case "copilot":
-			return createCopilotAdapter({ env });
 	}
 }
 
@@ -100,10 +95,6 @@ function commandTemplate(
 			return resumeSessionId
 				? `codex exec resume --json -o <output-last-message-path> ${resumeSessionId} ${JSON.stringify(prompt)}`
 				: `codex exec --json -m gpt-5.4 -c model_reasoning_effort=low --output-schema <output-schema-path> -o <output-last-message-path> ${JSON.stringify(prompt)}`;
-		case "copilot":
-			return resumeSessionId
-				? `copilot --resume=${resumeSessionId} -p ${JSON.stringify(prompt)} --allow-all-tools --no-custom-instructions --output-format json --model gpt-5.4 --effort low`
-				: `copilot -p ${JSON.stringify(prompt)} --allow-all-tools --no-custom-instructions --output-format json --model gpt-5.4 --effort low`;
 	}
 }
 

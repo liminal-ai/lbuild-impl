@@ -125,8 +125,7 @@ export type CallerRulingRequest = CoreCallerRulingRequest;
 export type CallerRulingResponse = CoreCallerRulingResponse;
 export type StoryLeadFinalPackage = CoreStoryLeadFinalPackage;
 export type StoryRunCurrentSnapshot = CoreStoryRunCurrentSnapshot;
-export type StoryOrchestrateValidateResult =
-	CoreStoryOrchestrateValidateResult;
+export type StoryOrchestrateValidateResult = CoreStoryOrchestrateValidateResult;
 export type StoryOrchestrateRunResult = CoreStoryOrchestrateRunResult;
 export type StoryOrchestrateResumeResult = CoreStoryOrchestrateResumeResult;
 export type StoryOrchestrateStatusResult = CoreStoryOrchestrateStatusResult;

@@ -49,10 +49,8 @@ test("TC-5.6b: prompt covers each provider for provider-consuming operations", a
 	for (const configPath of [
 		"impl-run.claude-smoke.json",
 		"impl-run.codex-smoke.json",
-		"impl-run.copilot-smoke.json",
 		"impl-run.claude.json",
 		"impl-run.codex.json",
-		"impl-run.copilot.json",
 	]) {
 		expect(
 			invocations.some((invocation) => invocation.includes(configPath)),
@@ -60,7 +58,7 @@ test("TC-5.6b: prompt covers each provider for provider-consuming operations", a
 		).toBe(true);
 	}
 
-	for (const provider of ["claude-code", "codex", "copilot"]) {
+	for (const provider of ["claude-code", "codex"]) {
 		expect(prompt).toContain(`gorilla/evidence/<YYYY-MM-DD>/${provider}-`);
 	}
 });

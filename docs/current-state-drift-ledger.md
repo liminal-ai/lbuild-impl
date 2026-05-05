@@ -33,7 +33,7 @@ The release gorilla gate enforces a bounded four-report matrix:
 
 - `claude-code-smoke.md`
 - `codex-resume.md`
-- `copilot-structured-output.md`
+- `codex-structured-output.md`
 - `codex-stall.md`
 
 Earlier provider-by-scenario wording in the epic design should be read as the broader gorilla capability, not the current release gate.
@@ -41,10 +41,6 @@ Earlier provider-by-scenario wording in the epic design should be read as the br
 ## Manual Publish Rehearsal
 
 Manual publish workflow runs validate a GitHub-visible ref and never publish live. If the requested version already exists on npm, the manual dry-run path uses `npm pack --dry-run --json` to validate package shape instead of attempting `npm publish --dry-run` for an already-published version.
-
-## Provider CLI Choice
-
-Copilot integration currently uses the standalone `copilot` binary installed from `@github/copilot`, not the older `gh copilot` extension assumption.
 
 ## Runtime Contract Fixes
 

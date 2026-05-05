@@ -48,7 +48,6 @@ Current provider binaries:
 
 - Claude Code: `claude`
 - Codex: `codex`
-- Copilot: standalone `copilot` CLI installed from `@github/copilot`
 
 Provider checks and adapters return structured runtime results. The real-provider integration gate installs the provider CLIs in GitHub Actions, authenticates Codex with `OPENAI_API_KEY`, and exercises the integration test suite directly through `npm run verify-all`. If provider binaries, auth, or required environment are missing when integration is invoked, the suite fails loudly instead of skipping.
 
@@ -77,7 +76,7 @@ The release evidence contract is a bounded four-report matrix:
 
 - `claude-code-smoke.md`
 - `codex-resume.md`
-- `copilot-structured-output.md`
+- `codex-structured-output.md`
 - `codex-stall.md`
 
 Evidence is stored under `gorilla/evidence/<YYYY-MM-DD>/`. The release gate accepts the freshest dated directory inside the configured freshness window and rejects reports with unresolved divergences.
@@ -100,6 +99,6 @@ The default CI workflow runs the default and package projects. The publish workf
 
 The repo contains historical epic docs that were written before the final package name, runner choice, test topology, and release evidence policy settled. Use this current-state document and the release runbook for present-day behavior.
 
-Real-provider tests require valid `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GH_TOKEN` secrets in CI. Local integration runs require equivalent credentials and installed provider CLIs.
+Real-provider tests require valid `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` secrets in CI. Local integration runs require equivalent credentials and installed provider CLIs.
 
 Manual release rehearsal validates a GitHub-visible ref, not an unpushed local tag. If the version already exists on npm, the dry-run path validates package shape with `npm pack --dry-run --json`.

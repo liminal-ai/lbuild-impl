@@ -115,11 +115,19 @@ describe("ls-impl orchestration docs", () => {
 				readDoc("src/skills/ls-impl/references/ls-impl-process-playbook.md"),
 			]);
 
-		expect(skillRoot).toContain("should start with `story-orchestrate validate`");
+		expect(skillRoot).toContain(
+			"should start with `story-orchestrate validate`",
+		);
 		expect(stageMap).toContain("run `story-orchestrate validate`");
-		expect(initialization).toContain("should first pass `story-orchestrate validate`");
-		expect(setup).toContain("each story now starts with `story-orchestrate validate`");
+		expect(initialization).toContain(
+			"should first pass `story-orchestrate validate`",
+		);
+		expect(setup).toContain(
+			"each story now starts with `story-orchestrate validate`",
+		);
 		expect(storyCycle).toContain("First run `story-orchestrate validate`");
-		expect(playbook).toContain("Before starting a story, run `story-orchestrate validate`");
+		expect(playbook).toContain(
+			"Before starting a story, run `story-orchestrate validate`",
+		);
 	});
 });

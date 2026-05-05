@@ -9,7 +9,7 @@ const FIXTURE_ROOT = join(
 	ROOT,
 	"tests/support/parser-contract-fixtures/providers",
 );
-const PROVIDERS = ["claude-code", "codex", "copilot"] as const;
+const PROVIDERS = ["claude-code", "codex"] as const;
 const SCENARIOS = ["resume", "smoke", "stall", "structured-output"] as const;
 
 describe("parser-contract fixture provenance", () => {

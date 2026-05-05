@@ -916,9 +916,7 @@ function extractContinuationHandle<TResult extends { continuation?: unknown }>(
 
 	const candidate = continuation as Record<string, unknown>;
 	if (
-		(candidate.provider === "claude-code" ||
-			candidate.provider === "codex" ||
-			candidate.provider === "copilot") &&
+		(candidate.provider === "claude-code" || candidate.provider === "codex") &&
 		typeof candidate.sessionId === "string" &&
 		typeof candidate.storyId === "string"
 	) {
@@ -1010,8 +1008,9 @@ async function readValidationBaselineSeed(
 			if (parsed.command !== "story-orchestrate validate") {
 				continue;
 			}
-			const result =
-				parsed.result as StoryOrchestrateValidateResult | undefined;
+			const result = parsed.result as
+				| StoryOrchestrateValidateResult
+				| undefined;
 			const baseline = result?.baselineSeed?.baselineBeforeCurrentStory;
 			if (typeof baseline === "number") {
 				return baseline;
@@ -2357,12 +2356,11 @@ export async function runStoryLead(
 										specPackRoot: input.specPackRoot,
 										storyId,
 										provider: continuation.provider,
-											sessionId: continuation.sessionId,
-											response,
-											orchestratorContext:
-												action.inputs.orchestratorContext ??
-												action.inputs.focus,
-											configPath: input.configPath,
+										sessionId: continuation.sessionId,
+										response,
+										orchestratorContext:
+											action.inputs.orchestratorContext ?? action.inputs.focus,
+										configPath: input.configPath,
 										env: input.env,
 										artifactPath: childArtifacts.artifactPath,
 										streamOutputPaths: childArtifacts.streamOutputPaths,

@@ -691,8 +691,8 @@ export const storyRunSelectionSchema = z.discriminatedUnion("case", [
 			case: z.literal("invalid-story-run-id"),
 			storyId: z.string().min(1),
 			storyRunId: z.string().min(1),
-	})
-	.strict(),
+		})
+		.strict(),
 ]);
 
 export const storyOrchestrateBaselineSeedSchema = z

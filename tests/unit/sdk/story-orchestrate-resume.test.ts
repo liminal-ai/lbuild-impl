@@ -250,7 +250,7 @@ describe("story-orchestrate resume sdk operation", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-resume-sequencing-001", {
@@ -333,7 +333,7 @@ describe("story-orchestrate resume sdk operation", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper(

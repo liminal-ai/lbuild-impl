@@ -54,7 +54,7 @@ function codexBackedConfig() {
 	};
 }
 
-function copilotFallbackConfig() {
+function codexFallbackConfig() {
 	return {
 		version: 1,
 		primary_harness: "claude-code",
@@ -64,12 +64,12 @@ function copilotFallbackConfig() {
 			reasoning_effort: "high",
 		},
 		quick_fixer: {
-			secondary_harness: "copilot",
+			secondary_harness: "codex",
 			model: "gpt-5.4",
 			reasoning_effort: "medium",
 		},
 		story_verifier: {
-			secondary_harness: "copilot",
+			secondary_harness: "codex",
 			model: "gpt-5.4",
 			reasoning_effort: "xhigh",
 		},
@@ -79,7 +79,7 @@ function copilotFallbackConfig() {
 		epic_verifiers: [
 			{
 				label: "epic-verifier-1",
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
 			},
@@ -91,7 +91,7 @@ function copilotFallbackConfig() {
 			},
 		],
 		epic_synthesizer: {
-			secondary_harness: "copilot",
+			secondary_harness: "codex",
 			model: "gpt-5.4",
 			reasoning_effort: "xhigh",
 		},
@@ -696,9 +696,9 @@ describe("preflight command", () => {
 		);
 	});
 
-	test("TC-2.2b validates Copilot-backed fresh-session roles when Codex is absent and Copilot is chosen", async () => {
-		const specPackRoot = await createSpecPack("preflight-copilot");
-		await writeRunConfig(specPackRoot, copilotFallbackConfig());
+	test("TC-2.2b validates Codex-backed fresh-session roles when Codex is absent and Codex is chosen", async () => {
+		const specPackRoot = await createSpecPack("preflight-codex");
+		await writeRunConfig(specPackRoot, codexFallbackConfig());
 		await writeTextFile(
 			join(specPackRoot, "package.json"),
 			JSON.stringify(
@@ -712,14 +712,14 @@ describe("preflight command", () => {
 				2,
 			),
 		);
-		const pathValue = await setupProviderPath("preflight-copilot-bins", [
+		const pathValue = await setupProviderPath("preflight-codex-bins", [
 			{
 				name: "claude",
 				version: "claude 1.0.0",
 			},
 			{
-				name: "copilot",
-				version: "copilot 3.0.0",
+				name: "codex",
+				version: "codex 3.0.0",
 			},
 		]);
 
@@ -740,13 +740,13 @@ describe("preflight command", () => {
 		).toBe("none");
 		expect(envelope.result.providerMatrix.secondary).toContainEqual(
 			expect.objectContaining({
-				harness: "copilot",
+				harness: "codex",
 				available: true,
 			}),
 		);
 	});
 
-	test("TC-2.2c accepts Claude-only configs without requiring Codex or Copilot binaries", async () => {
+	test("TC-2.2c accepts Claude-only configs without requiring Codex or Codex binaries", async () => {
 		const specPackRoot = await createSpecPack("preflight-claude-only");
 		await writeRunConfig(specPackRoot, claudeOnlyConfig());
 		await writeTextFile(
@@ -997,62 +997,6 @@ describe("preflight command", () => {
 		});
 		expect(envelope.result.notes).toContain(
 			"claude-code auth status unknown — proceed if CLI works in your environment.",
-		);
-	});
-
-	test("blocks preflight only for the unavailable provider tier when authentication explicitly fails", async () => {
-		const specPackRoot = await createSpecPack("preflight-unavailable");
-		await writeRunConfig(specPackRoot, copilotFallbackConfig());
-		await writeTextFile(
-			join(specPackRoot, "package.json"),
-			JSON.stringify(
-				{
-					scripts: {
-						"green-verify": "bun run green-verify",
-						"verify-all": "bun run verify-all",
-					},
-				},
-				null,
-				2,
-			),
-		);
-		const pathValue = await setupProviderPath("preflight-unavailable-bins", [
-			{
-				name: "claude",
-				version: "claude 1.0.0",
-			},
-			{
-				name: "copilot",
-				version: "copilot 3.0.0",
-				authBehavior: "missing",
-			},
-		]);
-
-		const run = await runSourceCli(
-			["preflight", "--spec-pack-root", specPackRoot, "--json"],
-			{
-				env: {
-					PATH: pathValue,
-				},
-			},
-		);
-
-		expect(run.exitCode).toBe(3);
-
-		const envelope = parseJsonOutput(run.stdout);
-		expect(envelope.status).toBe("blocked");
-		expect(envelope.errors).toContainEqual(
-			expect.objectContaining({
-				code: "PROVIDER_UNAVAILABLE",
-			}),
-		);
-		expect(envelope.result.providerMatrix.secondary).toContainEqual(
-			expect.objectContaining({
-				harness: "copilot",
-				available: false,
-				tier: "unavailable",
-				authStatus: "missing",
-			}),
 		);
 	});
 });

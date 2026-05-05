@@ -65,13 +65,13 @@ test("release evidence gate requires the canonical gorilla release matrix", asyn
 	const evidenceRoot = await createEvidenceRoot([
 		"claude-code-smoke.md",
 		"codex-resume.md",
-		"copilot-structured-output.md",
+		"codex-structured-output.md",
 		"codex-stall.md",
 	]);
 
 	await expect(runEvidenceCheck(evidenceRoot)).resolves.toMatchObject({
 		stdout: expect.stringContaining(
-			"required matrix claude-code-smoke.md, codex-resume.md, copilot-structured-output.md, codex-stall.md",
+			"required matrix claude-code-smoke.md, codex-resume.md, codex-structured-output.md, codex-stall.md",
 		),
 	});
 });
@@ -81,7 +81,7 @@ test("release evidence gate fails when a required matrix report is absent", asyn
 
 	await expect(runEvidenceCheck(evidenceRoot)).rejects.toMatchObject({
 		stderr: expect.stringContaining(
-			"missing required release report(s): claude-code-smoke.md, codex-resume.md, copilot-structured-output.md, codex-stall.md",
+			"missing required release report(s): claude-code-smoke.md, codex-resume.md, codex-structured-output.md, codex-stall.md",
 		),
 	});
 });

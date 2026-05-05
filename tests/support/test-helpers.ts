@@ -315,7 +315,7 @@ export interface FakeProviderResponse {
 
 export async function writeFakeProviderExecutable(params: {
 	binDir: string;
-	provider: "claude" | "codex" | "copilot";
+	provider: "claude" | "codex";
 	responses?: FakeProviderResponse[];
 	version?: string;
 	authStatus?: "authenticated" | "missing";

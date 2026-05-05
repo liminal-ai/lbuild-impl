@@ -190,7 +190,7 @@ export default defineCommand({
 				storyId: args["story-id"],
 				provider:
 					typeof args.provider === "string"
-						? (args.provider as "claude-code" | "codex" | "copilot")
+						? (args.provider as "claude-code" | "codex")
 						: undefined,
 				sessionId: args["session-id"],
 				response,

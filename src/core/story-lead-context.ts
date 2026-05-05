@@ -34,7 +34,6 @@ const CALLER_INPUT_ARTIFACT_KINDS = new Set([
 const DEFAULT_PROVIDER_LIMIT_BYTES: Record<string, number> = {
 	"claude-code": 800_000,
 	codex: 800_000,
-	copilot: 800_000,
 };
 
 function byteLength(value: string): number {

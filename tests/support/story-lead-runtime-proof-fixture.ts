@@ -308,23 +308,23 @@ export async function createMiniStoryRuntimeProofFixture(
 		specPackRoot,
 		createRunConfig({
 			story_implementor: {
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "high",
 			},
 			quick_fixer: {
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "high",
 			},
 			story_verifier: {
-				secondary_harness: "copilot",
+				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
 			},
 			story_lead_provider: {
-				secondary_harness: "codex",
-				model: "gpt-5.4",
+				secondary_harness: "none",
+				model: "claude-sonnet",
 				reasoning_effort: "high",
 			},
 			self_review: {
@@ -381,7 +381,7 @@ export async function installMiniStoryRuntimeProofProviders(
 	);
 	const storyLead = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
-		provider: "codex",
+		provider: "claude",
 		responses: [
 			{
 				stdout: providerWrapper("codex-story-lead-proof-001", {
@@ -423,23 +423,23 @@ export async function installMiniStoryRuntimeProofProviders(
 	});
 	const childProvider = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
-		provider: "copilot",
+		provider: "codex",
 		responses: [
 			{
 				stdout: providerWrapper(
-					"copilot-story-implement-proof-001",
+					"codex-story-implement-proof-001",
 					buildImplementorPayload(fixture),
 				),
 			},
 			{
 				stdout: providerWrapper(
-					"copilot-story-implement-proof-001",
+					"codex-story-implement-proof-001",
 					buildSelfReviewPayload(fixture),
 				),
 			},
 			{
 				stdout: providerWrapper(
-					"copilot-story-verify-proof-001",
+					"codex-story-verify-proof-001",
 					buildVerifierPayload(fixture),
 				),
 			},

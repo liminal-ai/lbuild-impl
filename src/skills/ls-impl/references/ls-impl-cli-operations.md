@@ -52,7 +52,7 @@ Use `lbuild-impl ...` as the portable invocation form across macOS, Linux, and W
 
 ## Runtime Progress
 
-- The runtime progress surface is CLI-owned and provider-agnostic. The same polling model works whether the secondary harness is Codex, Claude Code, or Copilot.
+- The runtime progress surface is CLI-owned and provider-agnostic. The same polling model works whether the secondary harness is Claude Code or Codex.
 - `status.json` is the primary wake-up target because it gives the current phase, timestamps, provider, cwd, timeout, and artifact paths in one place.
 - `progress.jsonl` is the lifecycle history for the current operation.
 - Treat these timing bands as reporting guidance only:

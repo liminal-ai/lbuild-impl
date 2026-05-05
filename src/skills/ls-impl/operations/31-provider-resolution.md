@@ -15,8 +15,7 @@ Claude Code is the primary harness for every run. It is always available because
 Check secondary harness availability in this order and stop at the first available:
 
 1. Codex CLI — `codex --version`
-2. Copilot CLI — `copilot --version`
-3. Neither
+2. Neither
 
 The result selects which defaults table applies below. Record a degraded-diversity condition in `team-impl-log.md` when neither is available.
 
@@ -39,20 +38,6 @@ Each role gets a `secondary_harness`, `model`, and `reasoning_effort`. The epic 
 | `epic_verifier_1` | `codex` | `gpt-5.4` | `xhigh` |
 | `epic_verifier_2` | `none` | `claude-sonnet` | `high` |
 | `epic_synthesizer` | `codex` | `gpt-5.4` | `xhigh` |
-
-### Codex unavailable, Copilot available
-
-Copilot is valid for both fresh-session and retained-session roles in v1.
-
-| Role | secondary_harness | model | reasoning_effort |
-|------|---|---|---|
-| `story_lead_provider` | `copilot` | `gpt-5.4` | `high` |
-| `story_implementor` | `copilot` | `gpt-5.4` | `high` |
-| `quick_fixer` | `copilot` | `gpt-5.4` | `high` |
-| `story_verifier` | `copilot` | `gpt-5.4` | `xhigh` |
-| `epic_verifier_1` | `copilot` | `gpt-5.4` | `xhigh` |
-| `epic_verifier_2` | `none` | `claude-sonnet` | `high` |
-| `epic_synthesizer` | `copilot` | `gpt-5.4` | `xhigh` |
 
 ### Neither available
 

@@ -113,8 +113,6 @@ function executableForHarness(
 			return "claude";
 		case "codex":
 			return "codex";
-		case "copilot":
-			return "copilot";
 		case "none":
 			return null;
 	}
@@ -125,7 +123,6 @@ function authCommandForHarness(
 ): string[] | undefined {
 	switch (harness) {
 		case "claude-code":
-		case "copilot":
 			return ["auth", "status"];
 		case "codex":
 			return undefined;

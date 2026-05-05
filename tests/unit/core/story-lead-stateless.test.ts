@@ -34,13 +34,13 @@ describe("story-lead stateless runtime", () => {
 			specPackRoot,
 			createRunConfig({
 				story_implementor: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "high",
 				},
 				story_lead_provider: {
-					secondary_harness: "codex",
-					model: "gpt-5.4",
+					secondary_harness: "none",
+					model: "claude-sonnet",
 					reasoning_effort: "high",
 				},
 			}),
@@ -51,7 +51,7 @@ describe("story-lead stateless runtime", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-stateless-001", {
@@ -89,10 +89,10 @@ describe("story-lead stateless runtime", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
-					stdout: providerWrapper("copilot-story-implement-stateless-001", {
+					stdout: providerWrapper("codex-story-implement-stateless-001", {
 						outcome: "blocked",
 						planSummary: "CHILD_FAILURE_CONTEXT_SENTINEL",
 						changedFiles: [],
@@ -146,7 +146,9 @@ describe("story-lead stateless runtime", () => {
 		const currentSnapshot = JSON.parse(
 			await Bun.file(runEnvelope.result.currentSnapshotPath).text(),
 		) as Record<string, unknown>;
-		const secondPrompt = storyLeadInvocations[1]?.args.at(-1) ?? "";
+		const secondArgs = storyLeadInvocations[1]?.args ?? [];
+		const secondPrompt =
+			secondArgs[secondArgs.findIndex((arg) => arg === "-p") + 1] ?? "";
 
 		expect(storyLeadInvocations).toHaveLength(2);
 		expect(
@@ -205,7 +207,7 @@ describe("story-lead stateless runtime", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-ruling-001", {
@@ -245,7 +247,9 @@ describe("story-lead stateless runtime", () => {
 		const storyLeadInvocations = await readJsonLines<{
 			args: string[];
 		}>(storyLead.logPath);
-		const prompt = storyLeadInvocations[0]?.args.at(-1) ?? "";
+		const firstArgs = storyLeadInvocations[0]?.args ?? [];
+		const prompt =
+			firstArgs[firstArgs.findIndex((arg) => arg === "-p") + 1] ?? "";
 
 		expect(runEnvelope.result.finalPackage.outcome).toBe("needs-ruling");
 		expect(prompt).toContain("The story text is intentionally sparse.");
@@ -270,7 +274,7 @@ describe("story-lead stateless runtime", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stderr:
@@ -314,7 +318,7 @@ describe("story-lead stateless runtime", () => {
 		expect(runEnvelope.result.finalPackage.outcome).toBe("failed");
 		expect(overflowEvent?.data).toMatchObject({
 			code: "STORY_LEAD_CONTEXT_OVERFLOW",
-			provider: "codex",
+			provider: "claude-code",
 			storyId,
 			storyRunId: runEnvelope.result.storyRunId,
 		});
@@ -342,8 +346,8 @@ describe("story-lead stateless runtime", () => {
 			specPackRoot,
 			createRunConfig({
 				story_lead_provider: {
-					secondary_harness: "codex",
-					model: "gpt-5.4",
+					secondary_harness: "none",
+					model: "claude-sonnet",
 					reasoning_effort: "high",
 				},
 				timeouts: {
@@ -358,7 +362,7 @@ describe("story-lead stateless runtime", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					delayMs: 60,
@@ -431,13 +435,13 @@ describe("story-lead stateless runtime", () => {
 			specPackRoot,
 			createRunConfig({
 				story_implementor: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "high",
 				},
 				story_lead_provider: {
-					secondary_harness: "codex",
-					model: "gpt-5.4",
+					secondary_harness: "none",
+					model: "claude-sonnet",
 					reasoning_effort: "high",
 				},
 				timeouts: {
@@ -452,7 +456,7 @@ describe("story-lead stateless runtime", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-whole-run-001", {
@@ -466,11 +470,11 @@ describe("story-lead stateless runtime", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
 					delayMs: 800,
-					stdout: providerWrapper("copilot-story-implement-whole-run-001", {
+					stdout: providerWrapper("codex-story-implement-whole-run-001", {
 						outcome: "ready-for-verification",
 						planSummary: "WHOLE_RUN_TIMEOUT_SENTINEL",
 						changedFiles: [],
@@ -558,13 +562,13 @@ describe("story-lead stateless runtime", () => {
 			specPackRoot,
 			createRunConfig({
 				story_implementor: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "high",
 				},
 				story_lead_provider: {
-					secondary_harness: "codex",
-					model: "gpt-5.4",
+					secondary_harness: "none",
+					model: "claude-sonnet",
 					reasoning_effort: "high",
 				},
 			}),
@@ -575,7 +579,7 @@ describe("story-lead stateless runtime", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-crash-001", {
@@ -589,10 +593,10 @@ describe("story-lead stateless runtime", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
-					stdout: providerWrapper("copilot-story-implement-crash-001", {
+					stdout: providerWrapper("codex-story-implement-crash-001", {
 						outcome: "ready-for-verification",
 						planSummary: "CRASH_RECOVERY_CHILD_RESULT_SENTINEL",
 						changedFiles: [],

@@ -7,7 +7,7 @@
     "reasoning_effort": "max"
   },
   "quick_fixer": {
-    "secondary_harness": "copilot",
+    "secondary_harness": "codex",
     "model": "gpt-5.4",
     "reasoning_effort": "high"
   },

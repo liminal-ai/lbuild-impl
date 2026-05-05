@@ -96,13 +96,13 @@ describe("story-lead child-process interruption handling", () => {
 			specPackRoot,
 			createRunConfig({
 				story_implementor: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "high",
 				},
 				story_lead_provider: {
-					secondary_harness: "codex",
-					model: "gpt-5.4",
+					secondary_harness: "none",
+					model: "claude-sonnet",
 					reasoning_effort: "high",
 				},
 				timeouts: {
@@ -117,7 +117,7 @@ describe("story-lead child-process interruption handling", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-process-cleanup-stop-001", {
@@ -131,11 +131,11 @@ describe("story-lead child-process interruption handling", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
 					delayMs: 5_000,
-					stdout: providerWrapper("copilot-process-cleanup-stop-001", {
+					stdout: providerWrapper("codex-process-cleanup-stop-001", {
 						outcome: "ready-for-verification",
 						planSummary:
 							"This result should never complete before interruption cleanup.",
@@ -228,13 +228,13 @@ describe("story-lead child-process interruption handling", () => {
 			specPackRoot,
 			createRunConfig({
 				story_implementor: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "high",
 				},
 				story_lead_provider: {
-					secondary_harness: "codex",
-					model: "gpt-5.4",
+					secondary_harness: "none",
+					model: "claude-sonnet",
 					reasoning_effort: "high",
 				},
 				timeouts: {
@@ -249,7 +249,7 @@ describe("story-lead child-process interruption handling", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-process-cleanup-orphan-001", {
@@ -276,11 +276,11 @@ describe("story-lead child-process interruption handling", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
 					delayMs: 5_000,
-					stdout: providerWrapper("copilot-process-cleanup-orphan-001", {
+					stdout: providerWrapper("codex-process-cleanup-orphan-001", {
 						outcome: "ready-for-verification",
 						planSummary: "OLD_PROVIDER_OUTPUT_SENTINEL",
 						changedFiles: [],

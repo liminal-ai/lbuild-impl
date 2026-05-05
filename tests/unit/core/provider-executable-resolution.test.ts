@@ -158,14 +158,14 @@ describe("provider executable resolution", () => {
 		);
 		await writeWindowsShim({
 			dir: providerBinDir,
-			name: "copilot.bat",
-			version: "copilot 3.0.0",
+			name: "codex.bat",
+			version: "codex 3.0.0",
 		});
 		const comspec = await writeComspecEmulator(providerBinDir);
 
 		const execution = await runProviderCommand({
-			provider: "copilot",
-			executable: "copilot",
+			provider: "codex",
+			executable: "codex",
 			args: ["--version"],
 			cwd: providerBinDir,
 			env: {
@@ -178,7 +178,7 @@ describe("provider executable resolution", () => {
 		});
 
 		expect(execution.exitCode).toBe(0);
-		expect(execution.stdout).toBe("copilot 3.0.0");
+		expect(execution.stdout).toBe("codex 3.0.0");
 		expect(execution.stderr).toBe("");
 	});
 
@@ -222,7 +222,7 @@ describe("provider executable resolution", () => {
 		});
 
 		expect(isWindowsCommandShim("C:\\Tools\\codex.cmd")).toBe(true);
-		expect(isWindowsCommandShim("C:\\Tools\\copilot.bat")).toBe(true);
+		expect(isWindowsCommandShim("C:\\Tools\\codex.bat")).toBe(true);
 		expect(isWindowsCommandShim("/usr/local/bin/codex")).toBe(false);
 		expect(invocation).toEqual({
 			file: "C:\\Windows\\System32\\cmd.exe",

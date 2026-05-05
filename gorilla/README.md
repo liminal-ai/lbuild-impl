@@ -12,7 +12,7 @@ This directory holds the source-only release verification fixture for Story 5.
 - `shims/codex`: a no-output shim used to force the stall scenario.
 
 ## Enums
-- Providers: `claude-code`, `codex`, `copilot`
+- Providers: `claude-code`, `codex`
 - Scenarios: `smoke`, `resume`, `structured-output`, `stall`
 
 ## Release Matrix
@@ -20,7 +20,7 @@ The default release gate requires these canonical reports in a fresh dated evide
 
 - `claude-code-smoke.md`
 - `codex-resume.md`
-- `copilot-structured-output.md`
+- `codex-structured-output.md`
 - `codex-stall.md`
 
 Use `scripts/check-release-evidence.ts --matrix ...` only for an intentionally documented release-specific matrix.

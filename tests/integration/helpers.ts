@@ -31,7 +31,6 @@ const STALL_SILENCE_TIMEOUT_MS = 5_000;
 const providerModels: Record<RealProviderName, string> = {
 	"claude-code": "sonnet",
 	codex: "gpt-5.4",
-	copilot: "gpt-5.4",
 };
 
 const providerPayload = {

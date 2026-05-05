@@ -92,7 +92,7 @@ export default defineCommand({
 				specPackRoot: args["spec-pack-root"],
 				storyId: args["story-id"],
 				continuationHandle: {
-					provider: args.provider as "claude-code" | "codex" | "copilot",
+					provider: args.provider as "claude-code" | "codex",
 					sessionId: args["session-id"],
 					storyId: args["story-id"],
 				},

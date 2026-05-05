@@ -13,7 +13,7 @@ Missing prior chat or tool-call context is a normal recovery case, not a blocker
 
 ## 2. Author `impl-run.config.json`
 
-If the file is absent, author it using the default-resolution algorithm in `operations/31-provider-resolution.md`. The algorithm depends on which secondary harnesses are available locally (Codex, Copilot, or neither); apply it deterministically rather than improvising.
+If the file is absent, author it using the default-resolution algorithm in `operations/31-provider-resolution.md`. The algorithm depends on which secondary harnesses are available locally (Codex or neither); apply it deterministically rather than improvising.
 
 If the file is present, validate it by reading it; do not rewrite an existing run's role configuration unless the user has asked for a change. `preflight` may persist resolved `verification_gates` into the file so later CLI commands use the same gates without rediscovery. Treat that gate persistence as an expected CLI side effect and record it in `team-impl-log.md`.
 

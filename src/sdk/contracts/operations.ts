@@ -163,7 +163,7 @@ export interface StoryVerifyInput extends ProviderOperationInputBase {
 
 const continuationHandleInputSchema = z
 	.object({
-		provider: z.enum(["claude-code", "codex", "copilot"]),
+		provider: z.enum(["claude-code", "codex"]),
 		sessionId: z.string().min(1),
 		storyId: z.string().min(1),
 	})

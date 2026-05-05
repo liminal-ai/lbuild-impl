@@ -2,7 +2,7 @@ import { describe, test } from "vitest";
 
 import { assertExecutableOnPath } from "./helpers";
 
-const providers = ["claude-code", "codex", "copilot"] as const;
+const providers = ["claude-code", "codex"] as const;
 
 describe("integration gating", () => {
 	test("TC-5.4a: integration project fails loudly when required provider executables are unavailable", async () => {

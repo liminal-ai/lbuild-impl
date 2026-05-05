@@ -32,7 +32,7 @@ describe("story-orchestrate resume CLI", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper(

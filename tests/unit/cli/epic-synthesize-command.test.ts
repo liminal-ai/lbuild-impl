@@ -35,7 +35,7 @@ interface EpicVerifierFindingReport {
 interface EpicVerifierReport {
 	resultId: string;
 	outcome: "pass" | "revise" | "block";
-	provider: "claude-code" | "codex" | "copilot";
+	provider: "claude-code" | "codex";
 	model: string;
 	reviewerLabel: string;
 	crossStoryFindings: string[];
@@ -375,87 +375,6 @@ test("blocks epic-synthesize when the structured synthesis payload includes an u
 	);
 });
 
-test("executes epic-synthesize through Copilot when the run config selects Copilot for the epic synthesizer role", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-synthesize-copilot");
-	await writeRunConfig(
-		specPackRoot,
-		createRunConfig({
-			epic_synthesizer: {
-				secondary_harness: "copilot",
-				model: "gpt-5.4",
-				reasoning_effort: "xhigh",
-			},
-		}),
-	);
-	const reportOne = await writeVerifierReport(
-		specPackRoot,
-		"epic-verifier-1.json",
-		baseVerifierReport("epic-verifier-1"),
-	);
-	const reportTwo = await writeVerifierReport(
-		specPackRoot,
-		"epic-verifier-2.json",
-		baseVerifierReport("epic-verifier-2"),
-	);
-	const providerBinDir = await createTempDir(
-		"epic-synthesize-copilot-provider",
-	);
-	const { env, logPath } = await writeFakeProviderExecutable({
-		binDir: providerBinDir,
-		provider: "copilot",
-		responses: [
-			{
-				stdout: providerResult(
-					"copilot-epic-synthesize-001",
-					baseSynthesisPayload(),
-				),
-			},
-		],
-	});
-
-	const run = await runSourceCli(
-		[
-			"epic-synthesize",
-			"--spec-pack-root",
-			specPackRoot,
-			"--verifier-report",
-			reportOne,
-			"--verifier-report",
-			reportTwo,
-			"--json",
-		],
-		{
-			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
-				...env,
-			},
-		},
-	);
-
-	expect(run.exitCode).toBe(0);
-
-	const envelope = parseJsonOutput(run.stdout);
-	expect(envelope.outcome).toBe("ready-for-closeout");
-	expect(envelope.result.confirmedIssues).toEqual([
-		"Epic verification ran before closeout.",
-	]);
-
-	const invocations = await readJsonLines<{ args: string[] }>(logPath);
-	expect(invocations).toHaveLength(1);
-	expect(invocations[0]?.args).toEqual([
-		"-p",
-		expect.stringContaining("# Epic Synthesizer Base Prompt"),
-		"--allow-all-tools",
-		"--no-custom-instructions",
-		"--output-format",
-		"json",
-		"--model",
-		"gpt-5.4",
-		"--effort",
-		"xhigh",
-	]);
-});
-
 test("TC-8.3a verifies findings independently instead of blindly merging verifier reports", async () => {
 	const specPackRoot = await createEpicSpecPack(
 		"epic-synthesize-independent-verification",
@@ -492,9 +411,7 @@ test("TC-8.3a verifies findings independently instead of blindly merging verifie
 					title: "A production-path mock may remain",
 					evidence:
 						"Verifier 2 suspected a production-path mock but could not confirm it conclusively.",
-					affectedFiles: [
-						"processes/impl-cli/core/provider-adapters/copilot.ts",
-					],
+					affectedFiles: ["processes/impl-cli/core/provider-adapters/codex.ts"],
 					requirementIds: ["TC-8.1c"],
 					recommendedFixScope: "human-ruling",
 					blocking: false,

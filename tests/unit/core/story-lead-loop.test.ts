@@ -87,7 +87,9 @@ describe("story-lead loop", () => {
 		).toBe(false);
 		expect(
 			childInvocations.some((invocation) =>
-				invocation.args.some((arg) => arg.includes("--resume=")),
+				invocation.args.some((arg) =>
+					arg.includes("codex-story-implement-proof"),
+				),
 			),
 		).toBe(true);
 		for (const artifactPath of childArtifactPaths) {
@@ -176,7 +178,7 @@ describe("story-lead loop", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-quick-fix-001", {
@@ -215,7 +217,7 @@ describe("story-lead loop", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
 					stdout:
@@ -268,7 +270,7 @@ describe("story-lead loop", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-flow-3-001", {
@@ -295,7 +297,7 @@ describe("story-lead loop", () => {
 							"Run story verification so verifier findings and shim audit data exist.",
 						inputs: {
 							artifactRefs: [fixture.childArtifactPaths.selfReviewBatch],
-							provider: "copilot",
+							provider: "codex",
 						},
 					}),
 				},
@@ -345,10 +347,10 @@ describe("story-lead loop", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
-					stdout: providerWrapper("copilot-flow-3-implement-001", {
+					stdout: providerWrapper("codex-flow-3-implement-001", {
 						outcome: "ready-for-verification",
 						planSummary: "Prepared Flow 3 risk handoff evidence.",
 						changedFiles: [
@@ -377,7 +379,7 @@ describe("story-lead loop", () => {
 					}),
 				},
 				{
-					stdout: providerWrapper("copilot-flow-3-implement-001", {
+					stdout: providerWrapper("codex-flow-3-implement-001", {
 						outcome: "ready-for-verification",
 						planSummary: "Self-reviewed Flow 3 risk handoff evidence.",
 						changedFiles: [
@@ -406,7 +408,7 @@ describe("story-lead loop", () => {
 					}),
 				},
 				{
-					stdout: providerWrapper("copilot-flow-3-verify-001", {
+					stdout: providerWrapper("codex-flow-3-verify-001", {
 						artifactsRead: [
 							fixture.storyPath,
 							fixture.techDesignPath,
@@ -570,7 +572,7 @@ describe("story-lead loop", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-shim-ruling-001", {
@@ -651,7 +653,7 @@ describe("story-lead loop", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-failed-001", {
@@ -665,7 +667,7 @@ describe("story-lead loop", () => {
 		});
 		const childProvider = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "copilot",
+			provider: "codex",
 			responses: [
 				{
 					stderr: "simulated child provider failure",
@@ -731,7 +733,7 @@ describe("story-lead loop", () => {
 		const providerBinDir = await createTempDir("story-lead-loop-reopen-bin");
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-reopen-001", {
@@ -894,7 +896,7 @@ describe("story-lead loop", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-evidence-split-001", {
@@ -984,7 +986,7 @@ describe("story-lead loop", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-verifier-revise-001", {
@@ -1064,7 +1066,7 @@ describe("story-lead loop", () => {
 		);
 		const missingStoryLead = await writeFakeProviderExecutable({
 			binDir: missingProviderBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-verifier-missing-001", {
@@ -1135,7 +1137,7 @@ describe("story-lead loop", () => {
 		);
 		const ambiguousStoryLead = await writeFakeProviderExecutable({
 			binDir: ambiguousProviderBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper("codex-story-lead-verifier-ambiguous-001", {
@@ -1233,7 +1235,7 @@ describe("story-lead loop", () => {
 		const verifierPath = `${fixture.specPackRoot}/artifacts/${fixture.storyId}/003-verify.json`;
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: providerWrapper(
@@ -1412,12 +1414,12 @@ describe("story-lead loop", () => {
 		}
 
 		expect(runtime.finalPackage.outcome).toBe("accepted");
-		expect(runtime.finalPackage.logHandoff.storyReceiptDraft.baselineBeforeStory).toBe(
-			10,
-		);
-		expect(runtime.finalPackage.logHandoff.storyReceiptDraft.baselineAfterStory).toBe(
-			10,
-		);
+		expect(
+			runtime.finalPackage.logHandoff.storyReceiptDraft.baselineBeforeStory,
+		).toBe(10);
+		expect(
+			runtime.finalPackage.logHandoff.storyReceiptDraft.baselineAfterStory,
+		).toBe(10);
 		expect(
 			runtime.finalPackage.acceptanceChecks.find(
 				(check) => check.name === "baseline-status",
@@ -1525,7 +1527,7 @@ describe("story-lead loop", () => {
 		const providerBinDir = await createTempDir("story-lead-planner-streams");
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: "not json\n",
@@ -1582,7 +1584,7 @@ describe("story-lead loop", () => {
 		);
 		const storyLead = await writeFakeProviderExecutable({
 			binDir: providerBinDir,
-			provider: "codex",
+			provider: "claude",
 			responses: [
 				{
 					stdout: "not json\n",

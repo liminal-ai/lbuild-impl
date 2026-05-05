@@ -42,7 +42,7 @@ describe("epic verifier lane accounting", () => {
 				},
 				{
 					label: "epic-verifier-3",
-					provider: "copilot",
+					provider: "codex",
 				},
 			],
 		});
@@ -82,7 +82,7 @@ describe("epic verifier lane accounting", () => {
 
 		await tracker.recordVerifierLaneStarted({
 			label: "epic-verifier-3",
-			provider: "copilot",
+			provider: "codex",
 			phase: "epic-verifier-3",
 			summary: "epic-verifier-3 started.",
 		});

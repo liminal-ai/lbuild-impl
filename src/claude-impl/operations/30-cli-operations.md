@@ -179,7 +179,7 @@ Outcomes: `ready-for-closeout`, `needs-fixes`, `needs-more-verification`, `block
   - read `status.json`
   - compare `updatedAt` and `lastOutputAt`
   - tail the stream logs when you need more detail
-- The runtime progress surface is CLI-owned and provider-agnostic. The same polling model works whether the secondary harness is Codex, Claude Code, or Copilot.
+- The runtime progress surface is CLI-owned and provider-agnostic. The same polling model works whether the secondary harness is Claude Code or Codex.
 - Treat these timing bands as reporting guidance only:
   - `healthy` — output or lifecycle update within 5 minutes
   - `slow` — no output for 5 to 15 minutes

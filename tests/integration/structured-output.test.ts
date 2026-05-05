@@ -10,7 +10,7 @@ import {
 	sdkEnvelopeSchemas,
 } from "./helpers";
 
-const providers = ["claude-code", "codex", "copilot"] as const;
+const providers = ["claude-code", "codex"] as const;
 
 describe("real-provider structured-output coverage", () => {
 	for (const provider of providers) {

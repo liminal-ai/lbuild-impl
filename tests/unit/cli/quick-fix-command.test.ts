@@ -125,13 +125,14 @@ test("TC-5.3a runs quick-fix from request-text without requiring story-aware inp
 	const invocations = await readJsonLines<{ args: string[] }>(logPath);
 	expect(invocations).toHaveLength(1);
 	expect(invocations[0]?.args.slice(0, 6)).toEqual([
+		"-s",
+		"danger-full-access",
 		"exec",
 		"--json",
 		"-m",
 		"gpt-5.4",
-		"-c",
-		"model_reasoning_effort=high",
 	]);
+	expect(invocations[0]?.args).toContain("model_reasoning_effort=high");
 	expect(invocations[0]?.args).toContain("-o");
 	expect(invocations[0]?.args).not.toContain("resume");
 	expect(invocations[0]?.args[invocations[0].args.length - 1]).toBe(
@@ -248,83 +249,6 @@ test("TC-5.3b accepts --request-file, uses the selected working directory, and k
 	expect(invocations[0]?.args[invocations[0].args.length - 1]).toBe(
 		requestText,
 	);
-});
-
-test("runs quick-fix through Copilot when the run config selects the Copilot fresh-session fallback", async () => {
-	const specPackRoot = await createQuickFixSpecPack(
-		"quick-fix-copilot-fallback",
-	);
-	await writeRunConfig(
-		specPackRoot,
-		createRunConfig({
-			quick_fixer: {
-				secondary_harness: "copilot",
-				model: "gpt-5.4",
-				reasoning_effort: "medium",
-			},
-		}),
-	);
-	const providerBinDir = await createTempDir("quick-fix-copilot-provider");
-	const requestText =
-		"Apply the bounded quick-fix correction only and return a short report.";
-	const rawProviderOutput =
-		"Applied the bounded quick-fix correction through the Copilot fallback lane.";
-	const { env, logPath } = await writeFakeProviderExecutable({
-		binDir: providerBinDir,
-		provider: "copilot",
-		responses: [
-			{
-				stdout: rawProviderOutput,
-			},
-		],
-	});
-
-	const run = await runSourceCli(
-		[
-			"quick-fix",
-			"--spec-pack-root",
-			specPackRoot,
-			"--request-text",
-			requestText,
-			"--json",
-		],
-		{
-			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
-				...env,
-			},
-		},
-	);
-
-	expect(run.exitCode).toBe(0);
-
-	const envelope = parseJsonOutput(run.stdout);
-	expect(envelope.outcome).toBe("ready-for-verification");
-	expect(envelope.result).toMatchObject({
-		provider: "copilot",
-		model: "gpt-5.4",
-		rawProviderOutputPreview: rawProviderOutput,
-		rawProviderOutputBytes: Buffer.byteLength(rawProviderOutput, "utf8"),
-		rawProviderOutputTruncated: false,
-		rawProviderOutputLogPath: expect.stringContaining(
-			"/artifacts/quick-fix/streams/001-quick-fix.stdout.log",
-		),
-	});
-
-	const invocations = await readJsonLines<{ args: string[] }>(logPath);
-	expect(invocations).toHaveLength(1);
-	expect(invocations[0]?.args).toEqual([
-		"-p",
-		requestText,
-		"--allow-all-tools",
-		"--no-custom-instructions",
-		"--output-format",
-		"json",
-		"--model",
-		"gpt-5.4",
-		"--effort",
-		"medium",
-	]);
 });
 
 test("rejects missing or duplicate quick-fix request sources", async () => {

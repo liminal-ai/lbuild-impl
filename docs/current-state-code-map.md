@@ -55,7 +55,6 @@ Story-orchestrate surface:
 
 - `src/core/provider-adapters/claude-code.ts`: Claude Code adapter.
 - `src/core/provider-adapters/codex.ts`: Codex adapter.
-- `src/core/provider-adapters/copilot.ts`: Copilot adapter.
 - `src/core/provider-adapters/shared.ts`: shared provider runner utilities.
 - `src/core/provider-checks.ts`: provider availability and auth checks.
 - `src/core/provider-adapters/codex-output-schema.ts`: Codex structured-output schema handling.

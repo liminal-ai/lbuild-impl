@@ -13,7 +13,7 @@ import {
 	mkdir,
 } from "../runtime-deps";
 
-export type ProviderName = "claude-code" | "codex" | "copilot";
+export type ProviderName = "claude-code" | "codex";
 
 export type ProviderLivenessState =
 	| "starting"

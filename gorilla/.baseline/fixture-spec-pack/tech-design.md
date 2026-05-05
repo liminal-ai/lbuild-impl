@@ -8,14 +8,13 @@ This fixture exists only for Story 5 gorilla runs. It is intentionally small, bu
 - `target-codebase/` is a tiny Node project with two verification scripts.
 - `seed-verifier-reports/` provides two pretty-printed JSON verifier artifacts for `epic-synthesize`.
 - `seed-cleanup-batches/` provides one cleanup batch for `epic-cleanup`.
-- `impl-run.*.json` routes provider-backed flows through Claude Code, Codex, Copilot, or the forced-stall shim.
+- `impl-run.*.json` routes provider-backed flows through Claude Code, Codex, or the forced-stall shim.
 
 ## Provider Routing
 | Config | Primary use |
 | --- | --- |
 | `impl-run.claude.json` | Smoke path for `story-implement`, `story-self-review`, and `story-verify` |
 | `impl-run.codex.json` | Resume and epic-synthesis path |
-| `impl-run.copilot.json` | Structured-output path for `quick-fix` and `epic-cleanup` |
 | `impl-run.stall.json` | Forced stall path using the local `gorilla/shims/codex` shim |
 
 ## Verification Gates

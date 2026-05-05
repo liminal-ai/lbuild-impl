@@ -17,7 +17,7 @@ const FIXTURE_ROOT = join(
 	"parser-contract-fixtures",
 	"providers",
 );
-const PROVIDERS: RealProviderName[] = ["claude-code", "codex", "copilot"];
+const PROVIDERS: RealProviderName[] = ["claude-code", "codex"];
 const SCENARIOS: ParserScenarioName[] = [
 	"smoke",
 	"resume",

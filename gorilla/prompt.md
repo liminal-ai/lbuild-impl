@@ -12,7 +12,7 @@ Use the built package against the source-only fixture and record evidence in the
 
 ## Canonical Evidence Layout
 - Write one Markdown file per scenario under `gorilla/evidence/<YYYY-MM-DD>/<provider>-<scenario>.md`.
-- `<provider>` must be one of `claude-code`, `codex`, `copilot`.
+- `<provider>` must be one of `claude-code`, `codex`.
 - `<scenario>` must be one of `smoke`, `resume`, `structured-output`, `stall`.
 - Do not write deliberate-drift sanity checks into `gorilla/evidence/`; record them in `gorilla/self-test-log.md`.
 
@@ -35,12 +35,12 @@ Purpose: prove a Codex implementation operation returns a continuation handle an
 
 Save the resume report to `gorilla/evidence/<YYYY-MM-DD>/codex-resume.md`.
 
-### Copilot Structured Output
-Purpose: prove Copilot can return the quick-fix structured payload for a tiny target-codebase-only edit.
+### Codex Structured Output
+Purpose: prove Codex can return the quick-fix structured payload for a tiny target-codebase-only edit.
 
-- `quick-fix`: `$CLI quick-fix --spec-pack-root "$SPEC" --config "impl-run.copilot-smoke.json" --working-directory "$SPEC/target-codebase" --request-text "Make exactly one documentation-only edit: change the README H1 from 'Animal Summary Target Codebase' to 'Animal Summary Smoke Fixture'. Do not edit any other file." --json`
+- `quick-fix`: `$CLI quick-fix --spec-pack-root "$SPEC" --config "impl-run.codex-smoke.json" --working-directory "$SPEC/target-codebase" --request-text "Make exactly one documentation-only edit: change the README H1 from 'Animal Summary Target Codebase' to 'Animal Summary Smoke Fixture'. Do not edit any other file." --json`
 
-Save the structured-output report to `gorilla/evidence/<YYYY-MM-DD>/copilot-structured-output.md`.
+Save the structured-output report to `gorilla/evidence/<YYYY-MM-DD>/codex-structured-output.md`.
 
 ### Codex Stall
 Purpose: prove the runtime reports provider stalls quickly instead of hanging.
@@ -66,7 +66,7 @@ The release matrix intentionally does not run these broader operations. Run this
 - `story-self-review`: after `story-implement` or `story-continue` returns a continuation handle, run `$CLI story-self-review --spec-pack-root "$SPEC" --story-id 03-smoke-continuation --provider <provider> --session-id <sessionId> --passes 1 --config "impl-run.codex.json" --json`
 - `epic-verify`: `$CLI epic-verify --spec-pack-root "$SPEC" --config "impl-run.claude.json" --json`
 - `epic-synthesize`: `$CLI epic-synthesize --spec-pack-root "$SPEC" --verifier-report "$SPEC/seed-verifier-reports/codex-revise.json" --verifier-report "$SPEC/seed-verifier-reports/claude-code-pass.json" --config "impl-run.codex.json" --json`
-- `epic-cleanup`: `$CLI epic-cleanup --spec-pack-root "$SPEC" --cleanup-batch "$SPEC/seed-cleanup-batches/cleanup-batch-01.md" --config "impl-run.copilot.json" --json`
+- `epic-cleanup`: `$CLI epic-cleanup --spec-pack-root "$SPEC" --cleanup-batch "$SPEC/seed-cleanup-batches/cleanup-batch-01.md" --config "impl-run.codex.json" --json`
 
 ## Deliberate Drift Self-Test
 Introduce one known parser mismatch, rerun the affected path, confirm the divergence is surfaced, then document the result in `gorilla/self-test-log.md`.

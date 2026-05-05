@@ -22,7 +22,6 @@ test("TC-5.9a: evidence directory layout convention documented", async () => {
 	);
 	expect(readme).toContain("claude-code");
 	expect(readme).toContain("codex");
-	expect(readme).toContain("copilot");
 	expect(readme).toContain("smoke");
 	expect(readme).toContain("resume");
 	expect(readme).toContain("structured-output");

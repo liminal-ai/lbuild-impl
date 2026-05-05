@@ -42,11 +42,11 @@ These are the primitives and process terms used throughout this skill. Read once
 
 **Bounded operation** — One discrete CLI call. The public set: `inspect`, `preflight`, `story-implement`, `story-continue`, `story-self-review`, `story-verify`, `quick-fix`, `epic-cleanup`, `epic-verify`, `epic-synthesize`.
 
-**Provider** — The underlying CLI the lbuild-impl CLI invokes to run a role's prompt: Codex, Copilot, or Claude Code.
+**Provider** — The underlying CLI the lbuild-impl CLI invokes to run a role's prompt: Claude Code or Codex.
 
 **Primary harness** — The built-in Claude-backed provider path used when a role's `secondary_harness` is `none`. This is a provider choice inside `impl-run.config.json`, not the same thing as the caller harness reading output.
 
-**Secondary harness** — Optional provider the CLI invokes for GPT-backed roles: `codex`, `copilot`, or `none` (meaning "use the primary harness"). Configured per role in `impl-run.config.json`.
+**Secondary harness** — Optional provider the CLI invokes for GPT-backed roles: `codex` or `none` (meaning "use the primary harness"). Configured per role in `impl-run.config.json`.
 
 **Story-lead config** — Required `story_lead_provider` role assignment for `story-orchestrate` in `impl-run.config.json`. It selects the provider/model used by the composed story loop. The removed `story_lead` alias is rejected; keep `story_lead_provider` explicit until a dedicated default is chosen.
 

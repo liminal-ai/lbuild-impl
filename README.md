@@ -56,7 +56,7 @@ If you need to create the build pack first, start with [`liminal-spec`](https://
 
 **Artifact**: a durable file written back into the spec pack. Artifacts make implementation, verification, continuation, and release evidence auditable after the agent run is over.
 
-**Provider**: an external agent CLI used for implementation or verification work. Current adapters support Claude Code, Codex, and Copilot.
+**Provider**: an external agent CLI used for implementation or verification work. Current adapters support Claude Code and Codex.
 
 ## Install
 
@@ -170,13 +170,11 @@ Current provider binaries:
 
 - Claude Code: `claude`
 - Codex: `codex`
-- Copilot: `copilot`
 
 Common credentials:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
-- `GH_TOKEN`
 
 Provider-free commands such as `inspect` can run without these credentials. Real implementation and verification operations depend on the provider selected by the spec pack's run config.
 

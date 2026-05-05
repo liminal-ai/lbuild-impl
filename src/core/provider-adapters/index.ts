@@ -1,6 +1,5 @@
 import { createClaudeCodeAdapter } from "./claude-code";
 import { createCodexAdapter } from "./codex";
-import { createCopilotAdapter } from "./copilot";
 import type { ProviderAdapter, ProviderName } from "./shared";
 
 interface ProviderAdapterOptions {
@@ -25,7 +24,5 @@ export function createProviderAdapter(
 			return createClaudeCodeAdapter(options);
 		case "codex":
 			return createCodexAdapter(options);
-		case "copilot":
-			return createCopilotAdapter(options);
 	}
 }

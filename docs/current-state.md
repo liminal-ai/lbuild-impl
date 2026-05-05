@@ -45,7 +45,7 @@ The `skill` command is the exception to the envelope contract: it is a model-fac
 
 The implementation runtime writes durable artifacts under the spec pack. `inspect` is intentionally read-only. Mutating operations reserve artifact paths, write through atomic helpers, and preserve continuation/progress information where the operation supports it.
 
-Provider-backed operations support Claude Code, Codex, and Copilot through provider adapters. Primitive commands and `story-orchestrate` emit caller-facing heartbeat summaries on `stderr` while work is active, without changing the exact final JSON envelope on `stdout`. Real-provider integration runs are invoked through `npm run test:integration` and `npm run verify-all`; when provider binaries, auth, or required environment are missing, the integration suite fails loudly instead of skipping internally.
+Provider-backed operations support Claude Code and Codex through provider adapters. Primitive commands and `story-orchestrate` emit caller-facing heartbeat summaries on `stderr` while work is active, without changing the exact final JSON envelope on `stdout`. Real-provider integration runs are invoked through `npm run test:integration` and `npm run verify-all`; when provider binaries, auth, or required environment are missing, the integration suite fails loudly instead of skipping internally.
 
 ## Release Baseline
 

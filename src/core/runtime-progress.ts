@@ -7,7 +7,7 @@ import type { ProviderLifecycleEvent, ProviderName } from "./provider-adapters";
 import { appendFile, mkdir } from "./runtime-deps";
 
 const PROVIDER_OUTPUT_EVENT_INTERVAL_MS = 30_000;
-const runtimeProviderSchema = z.enum(["claude-code", "codex", "copilot"]);
+const runtimeProviderSchema = z.enum(["claude-code", "codex"]);
 const providerLivenessStateSchema = z.enum([
 	"starting",
 	"startup-failed",

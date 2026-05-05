@@ -23,7 +23,7 @@ export const reasoningEffortSchema = z.enum([
 export const MIN_SELF_REVIEW_PASSES = 1;
 export const MAX_SELF_REVIEW_PASSES = 5;
 export const primaryHarnessSchema = z.literal("claude-code");
-export const secondaryHarnessSchema = z.enum(["codex", "copilot", "none"]);
+export const secondaryHarnessSchema = z.enum(["codex", "none"]);
 
 export const roleAssignmentSchema = z
 	.object({

@@ -31,7 +31,6 @@ Recent known-good runs:
 3. Confirm the release workflow also has the provider secrets used by the real-harness job:
    - `ANTHROPIC_API_KEY`
    - `OPENAI_API_KEY`
-   - `GH_TOKEN`
 4. If the token was rotated, rerun `npm whoami` locally before the next tag so the live workflow is not the first auth check.
 
 ## Package access setup
@@ -57,7 +56,7 @@ The publish workflow validates gorilla evidence but does not generate it. The ma
 6. The default release gate requires this four-report matrix:
    - `claude-code-smoke.md`
    - `codex-resume.md`
-   - `copilot-structured-output.md`
+   - `codex-structured-output.md`
    - `codex-stall.md`
 7. If a release intentionally uses a smaller or different matrix, pass `--matrix <comma-separated reports>` to `scripts/check-release-evidence.ts` and document the explicit matrix in the release notes before tagging.
 8. For a clean report, record `- Unexpected behaviors observed: none` in the `## Divergences` section.

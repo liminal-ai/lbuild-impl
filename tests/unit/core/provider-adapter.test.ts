@@ -239,7 +239,7 @@ describe("provider availability checks", () => {
 		);
 	});
 
-	test("marks requested providers unavailable when the binary is missing or unauthenticated", async () => {
+	test("marks requested providers unavailable when the binary is missing", async () => {
 		const { resolveProviderMatrix } = await import(
 			"../../../src/core/provider-checks"
 		);
@@ -252,13 +252,12 @@ describe("provider availability checks", () => {
 			name: "claude",
 			version: "claude 1.0.0",
 		});
-		await writeProviderBinary({
-			dir: providerBinDir,
-			name: "copilot",
-			version: "copilot 3.0.0",
-			authStatus: "missing",
-		});
-
+		const codexPath = join(providerBinDir, "codex");
+		await writeTextFile(
+			codexPath,
+			["#!/bin/sh", 'echo "codex unavailable" >&2', "exit 127", ""].join("\n"),
+		);
+		await chmod(codexPath, 0o755);
 		const providerMatrix = await resolveProviderMatrix({
 			specPackRoot,
 			config: {
@@ -270,12 +269,12 @@ describe("provider availability checks", () => {
 					reasoning_effort: "high",
 				},
 				quick_fixer: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "medium",
 				},
 				story_verifier: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
 				},
@@ -285,28 +284,28 @@ describe("provider availability checks", () => {
 				epic_verifiers: [
 					{
 						label: "epic-verifier-1",
-						secondary_harness: "copilot",
+						secondary_harness: "codex",
 						model: "gpt-5.4",
 						reasoning_effort: "xhigh",
 					},
 				],
 				epic_synthesizer: {
-					secondary_harness: "copilot",
+					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
 				},
 			},
 			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				PATH: providerBinDir,
 			},
 		});
 
 		expect(providerMatrix.secondary).toContainEqual(
 			expect.objectContaining({
-				harness: "copilot",
+				harness: "codex",
 				available: false,
 				tier: "unavailable",
-				authStatus: "missing",
+				authStatus: "unknown",
 			}),
 		);
 	});
@@ -383,84 +382,6 @@ describe("provider availability checks", () => {
 				harness: "codex",
 				available: true,
 				tier: "binary-present",
-			}),
-		);
-	});
-
-	test("requests Copilot readiness when story_lead_provider is the only GPT-backed role", async () => {
-		const { resolveProviderMatrix } = await import(
-			"../../../src/core/provider-checks"
-		);
-
-		const specPackRoot = await createSpecPack(
-			"provider-checks-story-lead-copilot",
-		);
-		const providerBinDir = await createTempDir(
-			"provider-bin-story-lead-copilot",
-		);
-		await writeProviderBinary({
-			dir: providerBinDir,
-			name: "claude",
-			version: "claude 1.0.0",
-		});
-		await writeProviderBinary({
-			dir: providerBinDir,
-			name: "copilot",
-			version: "copilot 3.0.0",
-		});
-
-		const providerMatrix = await resolveProviderMatrix({
-			specPackRoot,
-			config: {
-				version: 1,
-				primary_harness: "claude-code",
-				story_lead_provider: {
-					secondary_harness: "copilot",
-					model: "gpt-5.4",
-					reasoning_effort: "high",
-				},
-				story_implementor: {
-					secondary_harness: "none",
-					model: "claude-sonnet",
-					reasoning_effort: "high",
-				},
-				quick_fixer: {
-					secondary_harness: "none",
-					model: "claude-sonnet",
-					reasoning_effort: "medium",
-				},
-				story_verifier: {
-					secondary_harness: "none",
-					model: "claude-sonnet",
-					reasoning_effort: "high",
-				},
-				self_review: {
-					passes: 2,
-				},
-				epic_verifiers: [
-					{
-						label: "epic-verifier-1",
-						secondary_harness: "none",
-						model: "claude-sonnet",
-						reasoning_effort: "high",
-					},
-				],
-				epic_synthesizer: {
-					secondary_harness: "none",
-					model: "claude-sonnet",
-					reasoning_effort: "high",
-				},
-			},
-			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
-			},
-		});
-
-		expect(providerMatrix.secondary).toContainEqual(
-			expect.objectContaining({
-				harness: "copilot",
-				available: true,
-				tier: "authenticated-known",
 			}),
 		);
 	});
@@ -543,77 +464,6 @@ describe("provider availability checks", () => {
 		);
 		expect(codexProvider?.notes.join(" ")).toContain(
 			"No non-mutating auth status command is available for codex.",
-		);
-	});
-
-	test("treats provider auth timeouts as unavailable with unknown auth status", async () => {
-		const { resolveProviderMatrix } = await import(
-			"../../../src/core/provider-checks"
-		);
-
-		const specPackRoot = await createSpecPack("provider-checks-timeout");
-		const providerBinDir = await createTempDir("provider-bin-timeout");
-		await writeProviderBinary({
-			dir: providerBinDir,
-			name: "claude",
-			version: "claude 1.0.0",
-		});
-		await writeProviderBinary({
-			dir: providerBinDir,
-			name: "copilot",
-			version: "copilot 3.0.0",
-			authBehavior: "timeout",
-		});
-
-		const providerMatrix = await resolveProviderMatrix({
-			specPackRoot,
-			config: {
-				version: 1,
-				primary_harness: "claude-code",
-				story_implementor: {
-					secondary_harness: "none",
-					model: "claude-sonnet",
-					reasoning_effort: "high",
-				},
-				quick_fixer: {
-					secondary_harness: "copilot",
-					model: "gpt-5.4",
-					reasoning_effort: "medium",
-				},
-				story_verifier: {
-					secondary_harness: "none",
-					model: "claude-sonnet",
-					reasoning_effort: "high",
-				},
-				self_review: {
-					passes: 2,
-				},
-				epic_verifiers: [
-					{
-						label: "epic-verifier-1",
-						secondary_harness: "none",
-						model: "claude-sonnet",
-						reasoning_effort: "high",
-					},
-				],
-				epic_synthesizer: {
-					secondary_harness: "none",
-					model: "claude-sonnet",
-					reasoning_effort: "high",
-				},
-			},
-			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
-			},
-			timeoutMs: 250,
-		});
-
-		expect(providerMatrix.secondary).toContainEqual(
-			expect.objectContaining({
-				harness: "copilot",
-				available: false,
-				authStatus: "unknown",
-			}),
 		);
 	});
 
@@ -1147,155 +997,6 @@ describe("provider availability checks", () => {
 		expect(invocations[1]?.args).toContain("high");
 		expect(invocations[0]?.args).not.toContain("--resume");
 		expect(invocations[1]?.args).not.toContain("--resume");
-	});
-
-	test("launches fresh Copilot executions with prompt and model flags and parses the structured result", async () => {
-		const { createCopilotAdapter } = await import(
-			"../../../src/core/provider-adapters/copilot"
-		);
-
-		const providerBinDir = await createTempDir(
-			"provider-adapter-copilot-fresh",
-		);
-		const sessionId = "copilot-verifier-fresh-001";
-		const { env, logPath } = await writeFakeProviderExecutable({
-			binDir: providerBinDir,
-			provider: "copilot",
-			responses: [
-				{
-					stdout: [
-						JSON.stringify({
-							type: "assistant.message",
-							data: {
-								content: JSON.stringify({
-									ok: true,
-								}),
-							},
-						}),
-						JSON.stringify({
-							type: "result",
-							sessionId,
-							exitCode: 0,
-						}),
-					].join("\n"),
-				},
-			],
-		});
-		const adapter = createCopilotAdapter({
-			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
-				...env,
-			},
-		});
-
-		const execution = await adapter.execute({
-			prompt: '{"step":"verify"}',
-			cwd: ROOT,
-			model: "gpt-5.4",
-			reasoningEffort: "xhigh",
-			timeoutMs: 1_000,
-			resultSchema: z.object({
-				ok: z.boolean(),
-			}),
-		});
-
-		expect(execution.exitCode).toBe(0);
-		expect(execution.parseError).toBeUndefined();
-		expect(execution.sessionId).toBe(sessionId);
-		expect(execution.parsedResult).toEqual({
-			ok: true,
-		});
-
-		const invocations = await readJsonLines<{ args: string[] }>(logPath);
-		expect(invocations).toHaveLength(1);
-		expect(invocations[0]?.args).toEqual([
-			"-p",
-			'{"step":"verify"}',
-			"--allow-all-tools",
-			"--no-custom-instructions",
-			"--output-format",
-			"json",
-			"--model",
-			"gpt-5.4",
-			"--effort",
-			"xhigh",
-		]);
-		expect(invocations[0]?.args).not.toContain("resume");
-	});
-
-	test("resumes Copilot retained sessions with the real resume flag and parses JSONL content", async () => {
-		const { createCopilotAdapter } = await import(
-			"../../../src/core/provider-adapters/copilot"
-		);
-
-		const providerBinDir = await createTempDir(
-			"provider-adapter-copilot-resume",
-		);
-		const sessionId = "copilot-session-reuse-301";
-		const { env, logPath } = await writeFakeProviderExecutable({
-			binDir: providerBinDir,
-			provider: "copilot",
-			responses: [
-				{
-					stdout: [
-						JSON.stringify({
-							type: "assistant.message",
-							data: {
-								content: JSON.stringify({
-									ok: true,
-								}),
-							},
-						}),
-						JSON.stringify({
-							type: "result",
-							sessionId,
-							exitCode: 0,
-						}),
-					].join("\n"),
-				},
-			],
-		});
-		const adapter = createCopilotAdapter({
-			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
-				...env,
-			},
-		});
-
-		const execution = await adapter.execute({
-			prompt: '{"step":"self-review"}',
-			cwd: ROOT,
-			model: "gpt-5.4",
-			reasoningEffort: "high",
-			resumeSessionId: sessionId,
-			timeoutMs: 1_000,
-			resultSchema: z.object({
-				ok: z.boolean(),
-			}),
-		});
-
-		expect(execution.exitCode).toBe(0);
-		expect(execution.parseError).toBeUndefined();
-		expect(execution.sessionId).toBe(sessionId);
-		expect(execution.parsedResult).toEqual({
-			ok: true,
-		});
-
-		const invocations = await readJsonLines<{ args: string[] }>(logPath);
-		expect(invocations).toHaveLength(1);
-		expect(invocations[0]?.args).toEqual([
-			`--resume=${sessionId}`,
-			"-p",
-			'{"step":"self-review"}',
-			"--allow-all-tools",
-			"--no-custom-instructions",
-			"--output-format",
-			"json",
-			"--model",
-			"gpt-5.4",
-			"--effort",
-			"high",
-		]);
 	});
 
 	test("parses provider-native JSON when the final text field contains the expected payload object", async () => {

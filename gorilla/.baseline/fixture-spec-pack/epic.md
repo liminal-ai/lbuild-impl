@@ -16,7 +16,7 @@ Give the gorilla pack a realistic spec pack with enough structure to exercise ev
 ### Flow 2: Keep provider prompts grounded
 - AC-2.1: The fixture stories point at concrete files under `target-codebase/`.
 - AC-2.2: Seed verifier reports and a seed cleanup batch exist so `epic-synthesize` and `epic-cleanup` can run without waiting for a prior gorilla session.
-- AC-2.3: Alternate run-configs exist for Claude Code, Codex, Copilot, and a forced-stall scenario.
+- AC-2.3: Alternate run-configs exist for Claude Code, Codex, and a forced-stall scenario.
 
 ### Flow 3: Produce release evidence
 - AC-3.1: The gorilla operator can record smoke, resume, structured-output, and stall evidence for the package.
