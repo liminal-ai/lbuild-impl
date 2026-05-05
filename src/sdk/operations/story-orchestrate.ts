@@ -1,5 +1,7 @@
 import { runStoryLead } from "../../core/story-lead.js";
+import { captureStoryBaselineSeed } from "../../core/story-orchestrate-validate.js";
 import {
+	storyOrchestrateValidateResultSchema,
 	storyOrchestrateResumeResultSchema,
 	storyOrchestrateRunResultSchema,
 	storyOrchestrateStatusResultSchema,
@@ -7,6 +9,7 @@ import {
 import { discoverStoryRunState } from "../../core/story-run-discovery.js";
 import { createStoryRunLedger } from "../../core/story-run-ledger.js";
 import { createRuntimeIdentity } from "../../core/runtime-identity.js";
+import { resolveProviderCwd } from "../../core/git-repo.js";
 import {
 	type StoryOrchestrateResumeInput,
 	type StoryOrchestrateResumeResult,
@@ -14,9 +17,12 @@ import {
 	type StoryOrchestrateRunResult,
 	type StoryOrchestrateStatusInput,
 	type StoryOrchestrateStatusResult,
+	type StoryOrchestrateValidateInput,
+	type StoryOrchestrateValidateResult,
 	storyOrchestrateResumeInputSchema,
 	storyOrchestrateRunInputSchema,
 	storyOrchestrateStatusInputSchema,
+	storyOrchestrateValidateInputSchema,
 } from "../contracts/story-orchestrate.js";
 import {
 	buildUnexpectedEnvelope,
@@ -25,6 +31,7 @@ import {
 	resolveOperationArtifactPath,
 	withSdkExecutionContext,
 } from "./shared.js";
+import { preflight } from "./preflight.js";
 
 function resultArtifacts(input: {
 	currentSnapshotPath?: string;
@@ -64,6 +71,24 @@ function resultArtifacts(input: {
 				]
 			: []),
 	];
+}
+
+function selectionArtifacts(
+	result: StoryOrchestrateValidateResult["storyRunSelection"],
+) {
+	switch (result.case) {
+		case "resume-required":
+		case "active-attempt-exists":
+			return resultArtifacts({
+				currentSnapshotPath: result.currentSnapshotPath,
+			});
+		case "existing-accepted-attempt":
+			return resultArtifacts({
+				finalPackagePath: result.finalPackagePath,
+			});
+		default:
+			return [];
+	}
 }
 
 function runOutcome(result: StoryOrchestrateRunResult): string {
@@ -343,6 +368,186 @@ export async function storyOrchestrateRun(input: StoryOrchestrateRunInput) {
 				startedAt,
 				outcome: envelope.outcome,
 				resultSchema: storyOrchestrateRunResultSchema,
+				errors: envelope.errors,
+			});
+		}
+	});
+}
+
+export async function storyOrchestrateValidate(
+	input: StoryOrchestrateValidateInput,
+) {
+	const parsedInput = parseSdkInput(storyOrchestrateValidateInputSchema, input);
+
+	return await withSdkExecutionContext(parsedInput, async () => {
+		const startedAt = new Date().toISOString();
+		const artifactPath = await resolveOperationArtifactPath({
+			command: "story-validate",
+			specPackRoot: parsedInput.specPackRoot,
+			artifactPath: parsedInput.artifactPath,
+			group: parsedInput.storyId,
+			fileName: "story-validate",
+		});
+
+		try {
+			const preflightEnvelope = await preflight({
+				specPackRoot: parsedInput.specPackRoot,
+				configPath: parsedInput.configPath,
+				env: parsedInput.env,
+			});
+			const selection = await discoverStoryRunState({
+				specPackRoot: parsedInput.specPackRoot,
+				storyId: parsedInput.storyId,
+			});
+			const checks: StoryOrchestrateValidateResult["checks"] = [];
+			const blockers: string[] = [];
+			const notes: string[] = [];
+			let outcome: StoryOrchestrateValidateResult["status"] = "ready";
+			let baselineSeed:
+				| StoryOrchestrateValidateResult["baselineSeed"]
+				| undefined;
+
+			checks.push({
+				name: "preflight-readiness",
+				status:
+					preflightEnvelope.outcome === "ready"
+						? "pass"
+						: preflightEnvelope.outcome === "needs-user-decision"
+							? "unknown"
+							: "fail",
+				summary: `Preflight returned ${preflightEnvelope.outcome}.`,
+				evidence: preflightEnvelope.artifacts.map((artifact) => artifact.path),
+			});
+			if (preflightEnvelope.outcome === "needs-user-decision") {
+				outcome = "needs-user-decision";
+				blockers.push(...preflightEnvelope.errors.map((error) => error.message));
+				notes.push(...preflightEnvelope.warnings);
+			} else if (preflightEnvelope.outcome !== "ready") {
+				outcome = "blocked";
+				blockers.push(...preflightEnvelope.errors.map((error) => error.message));
+				notes.push(...preflightEnvelope.warnings);
+			}
+
+			const selectionReady =
+				selection.case === "start-new" ||
+				selection.case === "start-from-primitive-artifacts";
+			checks.push({
+				name: "story-run-selection",
+				status: selectionReady ? "pass" : "fail",
+				summary: selectionReady
+					? `Story ${parsedInput.storyId} is ready to start a composed run.`
+					: `Story ${parsedInput.storyId} is not startable: ${selection.case}.`,
+				evidence: selectionArtifacts(selection).map((artifact) => artifact.path),
+			});
+			if (!selectionReady) {
+				outcome = "blocked";
+				switch (selection.case) {
+					case "invalid-story-id":
+						blockers.push(`Unknown story id: ${selection.storyId}`);
+						break;
+					case "invalid-story-run-id":
+						blockers.push(
+							`Unknown story-run id ${selection.storyRunId} for story ${selection.storyId}.`,
+						);
+						break;
+					case "ambiguous-story-run":
+						blockers.push(
+							"Multiple plausible story-run attempts exist; use story-orchestrate status or resume explicitly.",
+						);
+						break;
+					case "active-attempt-exists":
+						blockers.push(
+							`An active story-run already exists: ${selection.storyRunId}. Resume it instead of starting a new run.`,
+						);
+						break;
+					case "resume-required":
+						blockers.push(
+							`A resumable story-run already exists: ${selection.storyRunId}. Resume it instead of starting a new run.`,
+						);
+						break;
+					case "existing-accepted-attempt":
+						blockers.push(
+							`Story ${parsedInput.storyId} already has an accepted attempt: ${selection.storyRunId}. Reopen explicitly if needed.`,
+						);
+						break;
+					default:
+						break;
+				}
+			}
+
+			if (preflightEnvelope.outcome === "ready" && selectionReady) {
+				const workspaceRoot = await resolveProviderCwd(parsedInput.specPackRoot);
+				baselineSeed = await captureStoryBaselineSeed({
+					workspaceRoot,
+				});
+				checks.push({
+					name: "baseline-seed",
+					status: "pass",
+					summary: `Captured deterministic pre-story baseline seed (${baselineSeed.baselineBeforeCurrentStory} matching test file(s)).`,
+					evidence: [baselineSeed.workspaceRoot],
+				});
+			} else {
+				checks.push({
+					name: "baseline-seed",
+					status: "unknown",
+					summary:
+						"Baseline seed capture skipped because readiness blockers remain.",
+					evidence: [],
+				});
+			}
+
+			const result = storyOrchestrateValidateResultSchema.parse({
+				status: outcome,
+				storyId: parsedInput.storyId,
+				storyRunSelection: selection,
+				...(preflightEnvelope.result?.validatedConfig
+					? { validatedConfig: preflightEnvelope.result.validatedConfig }
+					: {}),
+				...(preflightEnvelope.result?.providerMatrix
+					? { providerMatrix: preflightEnvelope.result.providerMatrix }
+					: {}),
+				...(preflightEnvelope.result?.verificationGates
+					? { verificationGates: preflightEnvelope.result.verificationGates }
+					: {}),
+				...(baselineSeed ? { baselineSeed } : {}),
+				checks,
+				blockers,
+				notes: [...notes, ...(preflightEnvelope.result?.notes ?? [])],
+			});
+
+			return await finalizeEnvelope({
+				command: "story-orchestrate validate",
+				artifactPath,
+				startedAt,
+				outcome,
+				resultSchema: storyOrchestrateValidateResultSchema,
+				result,
+				errors:
+					outcome === "ready"
+						? []
+						: blockers.map((message) => ({
+								code:
+									outcome === "needs-user-decision"
+										? "VALIDATION_NEEDS_USER_DECISION"
+										: "VALIDATION_BLOCKED",
+								message,
+							})),
+				additionalArtifacts: selectionArtifacts(selection),
+			});
+		} catch (error) {
+			const envelope = buildUnexpectedEnvelope({
+				command: "story-orchestrate validate",
+				artifactPath,
+				startedAt,
+				outcome: "blocked",
+				error,
+			});
+			return await finalizeEnvelope({
+				command: envelope.command,
+				artifactPath,
+				startedAt,
+				outcome: envelope.outcome,
+				resultSchema: storyOrchestrateValidateResultSchema,
 				errors: envelope.errors,
 			});
 		}

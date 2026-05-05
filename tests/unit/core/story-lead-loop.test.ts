@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import { describe, expect, test } from "vitest";
 import { runStoryLead } from "../../../src/core/story-lead";
 import { createStoryRunLedger } from "../../../src/core/story-run-ledger";
@@ -139,6 +141,30 @@ describe("story-lead loop", () => {
 		expect(
 			events.some((event) => childArtifactPaths.includes(event.artifact ?? "")),
 		).toBe(true);
+		for (const turn of [1, 2, 3, 4]) {
+			const promptPath = join(
+				fixture.specPackRoot,
+				"artifacts",
+				fixture.storyId,
+				"story-lead",
+				"prompts",
+				`001-planner-turn-${String(turn).padStart(3, "0")}.md`,
+			);
+			expect(await Bun.file(promptPath).exists()).toBe(true);
+		}
+		const firstPrompt = await Bun.file(
+			join(
+				fixture.specPackRoot,
+				"artifacts",
+				fixture.storyId,
+				"story-lead",
+				"prompts",
+				"001-planner-turn-001.md",
+			),
+		).text();
+		expect(firstPrompt).toContain("<current_response>");
+		expect(firstPrompt).toContain("<history_responses>");
+		expect(firstPrompt).toContain("```yaml");
 	});
 
 	test("collects current-run quick-fix artifacts into the final package when the story-lead chooses run-quick-fix", async () => {
@@ -269,6 +295,7 @@ describe("story-lead loop", () => {
 							"Run story verification so verifier findings and shim audit data exist.",
 						inputs: {
 							artifactRefs: [fixture.childArtifactPaths.selfReviewBatch],
+							provider: "copilot",
 						},
 					}),
 				},
@@ -440,8 +467,8 @@ describe("story-lead loop", () => {
 						gatesRun: [
 							{ command: "npm run green-verify", result: "pass" as const },
 						],
-						mockOrShimAuditFindings: [
-							"Verifier found a production-path mock fallback that requires explicit approval.",
+						productionPathFindings: [
+							"Verifier found a production-path exception that requires explicit approval.",
 						],
 						recommendedNextStep: "pass" as const,
 						recommendedFixScope: "same-session-implementor" as const,
@@ -495,21 +522,21 @@ describe("story-lead loop", () => {
 			]),
 		);
 		expect(
-			finalPackage.riskAndDeviationReview.shimMockFallbackDecisions,
+			finalPackage.riskAndDeviationReview.productionPathDecisionItems,
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					description:
-						"Verifier found a production-path mock fallback that requires explicit approval.",
-					approvalStatus: "needs-ruling",
+						"Verifier found a production-path exception that requires explicit approval.",
+					approvalStatus: "not-required",
 				}),
 			]),
 		);
 		expect(
 			finalPackage.acceptanceChecks.find(
-				(check) => check.name === "shim-mock-fallback-status",
+				(check) => check.name === "production-path-status",
 			)?.status,
-		).toBe("fail");
+		).toBe("pass");
 	});
 
 	test("keeps production shim/mock needs-ruling decisions on the ruling path instead of exporting them as cleanup debt", async () => {
@@ -566,7 +593,7 @@ describe("story-lead loop", () => {
 							recommendedImplLeadAction: "accept" as const,
 						},
 						riskAndDeviationReview: {
-							shimMockFallbackDecisions: [
+							productionPathDecisionItems: [
 								{
 									description:
 										"Production fallback still needs caller approval.",
@@ -601,7 +628,7 @@ describe("story-lead loop", () => {
 		expect(runEnvelope.result.finalPackage.outcome).toBe("needs-ruling");
 		expect(runEnvelope.result.finalPackage.rulingRequest).toEqual(
 			expect.objectContaining({
-				decisionType: "shim-mock-fallback",
+				decisionType: "production-path",
 			}),
 		);
 		expect(
@@ -943,102 +970,6 @@ describe("story-lead loop", () => {
 		).toBe("pass");
 	});
 
-	test("TC-5.3b treats provenance-less legacy resume artifacts as fixture/preexisting evidence instead of current-run proof", async () => {
-		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
-			"story-lead-loop-legacy-resume-provenance",
-			{
-				includeStoryLead: true,
-			},
-		);
-		const implementorPath = `${specPackRoot}/artifacts/${storyId}/001-implementor.json`;
-		await seedPrimitiveArtifact({
-			specPackRoot,
-			storyId,
-			fileName: "001-implementor.json",
-			payload: {
-				command: "story-implement",
-				outcome: "ready-for-verification",
-			},
-		});
-		const priorAttempt = await seedStoryRunAttempt({
-			specPackRoot,
-			storyId,
-			status: "interrupted",
-			finalPackage: null,
-			latestArtifacts: [
-				{
-					kind: "implementor-result",
-					path: implementorPath,
-				},
-			],
-		});
-		const ledger = createStoryRunLedger({
-			specPackRoot,
-			storyId,
-		});
-		const existingAttempt = await ledger.getAttemptByStoryRunId(
-			priorAttempt.storyRunId,
-		);
-		if (!existingAttempt) {
-			throw new Error("Expected seeded legacy attempt to be readable.");
-		}
-		const providerBinDir = await createTempDir(
-			"story-lead-loop-legacy-resume-provenance-bin",
-		);
-		const storyLead = await writeFakeProviderExecutable({
-			binDir: providerBinDir,
-			provider: "codex",
-			responses: [
-				{
-					stdout: providerWrapper("codex-story-lead-legacy-resume-001", {
-						action: "accept-story",
-						rationale:
-							"Finalize from the legacy snapshot so provenance-less artifacts remain readable but not current proof.",
-						inputs: {
-							summary:
-								"Finalize from the legacy snapshot so provenance-less artifacts remain readable but not current proof.",
-							acceptanceCheckRefs: ["legacy-provenance-readable"],
-							recommendedImplLeadAction: "reopen" as const,
-						},
-					}),
-				},
-			],
-		});
-
-		const runtime = await runStoryLead({
-			specPackRoot,
-			storyId,
-			ledger,
-			mode: "resume",
-			existingAttempt,
-			env: {
-				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
-				...storyLead.env,
-			},
-		});
-
-		if (runtime.case !== "completed" || !runtime.finalPackage) {
-			throw new Error(
-				"Expected legacy provenance resume fixture to complete with a final package.",
-			);
-		}
-
-		expect(runtime.finalPackage.evidence.implementorArtifacts).toEqual([
-			expect.objectContaining({
-				path: implementorPath,
-				provenance: "fixture/preexisting",
-			}),
-		]);
-		expect(
-			runtime.finalPackage.logHandoff.storyReceiptDraft.implementorEvidenceRefs,
-		).toEqual([]);
-		expect(
-			runtime.finalPackage.acceptanceChecks.find(
-				(check) => check.name === "receipt-readiness",
-			)?.status,
-		).toBe("fail");
-	});
-
 	test("derives a revise verifier outcome from recorded verifier evidence instead of artifact presence", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-verifier-revise",
@@ -1287,6 +1218,213 @@ describe("story-lead loop", () => {
 		).toBe("unknown");
 	});
 
+	test("uses a validate artifact baseline seed when child totals are omitted", async () => {
+		const fixture = await createStoryOrchestrateSpecPack(
+			"story-lead-loop-validate-baseline-seed",
+			{
+				includeStoryLead: true,
+			},
+		);
+		const providerBinDir = await createTempDir(
+			"story-lead-loop-validate-baseline-seed-bin",
+		);
+		const validatePath = `${fixture.specPackRoot}/artifacts/${fixture.storyId}/001-story-validate.json`;
+		const implementorPath = `${fixture.specPackRoot}/artifacts/${fixture.storyId}/002-implementor.json`;
+		const verifierPath = `${fixture.specPackRoot}/artifacts/${fixture.storyId}/003-verify.json`;
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: providerWrapper(
+						"codex-story-lead-validate-baseline-seed-001",
+						{
+							action: "accept-story",
+							rationale:
+								"Validation seed plus latest verifier evidence is sufficient for acceptance packaging.",
+							inputs: {
+								summary:
+									"Validation seed plus latest verifier evidence is sufficient for acceptance packaging.",
+								acceptanceCheckRefs: ["validate-baseline-seed"],
+								acceptanceChecks: [
+									{
+										name: "validate-baseline-seed",
+										status: "pass" as const,
+										evidence: [validatePath],
+										reasoning:
+											"Validation seeded baseline evidence before acceptance packaging.",
+									},
+								],
+								recommendedImplLeadAction: "accept" as const,
+							},
+						},
+					),
+				},
+			],
+		});
+		await seedPrimitiveArtifact({
+			specPackRoot: fixture.specPackRoot,
+			storyId: fixture.storyId,
+			fileName: "001-story-validate.json",
+			payload: {
+				command: "story-orchestrate validate",
+				version: 1,
+				status: "ok",
+				outcome: "ready",
+				result: {
+					status: "ready",
+					storyId: fixture.storyId,
+					storyRunSelection: { case: "start-new" },
+					baselineSeed: {
+						workspaceRoot: fixture.specPackRoot,
+						baselineBeforeCurrentStory: 10,
+						testFilePattern: "\\.(test|spec)\\.[cm]?[jt]sx?$",
+					},
+					checks: [],
+					blockers: [],
+					notes: [],
+				},
+			},
+		});
+		await seedPrimitiveArtifact({
+			specPackRoot: fixture.specPackRoot,
+			storyId: fixture.storyId,
+			fileName: "002-implementor.json",
+			payload: {
+				command: "story-implement",
+				version: 1,
+				status: "ok",
+				outcome: "ready-for-verification",
+				result: {
+					planSummary: "Fixture implementation.",
+					changedFiles: [],
+					tests: {
+						added: [],
+						modified: ["tests/service/example.test.ts"],
+						removed: [],
+					},
+					specDeviations: [],
+				},
+				errors: [],
+				warnings: [],
+				artifacts: [],
+			},
+		});
+		await seedPrimitiveArtifact({
+			specPackRoot: fixture.specPackRoot,
+			storyId: fixture.storyId,
+			fileName: "003-verify.json",
+			payload: {
+				command: "story-verify",
+				version: 1,
+				status: "ok",
+				outcome: "pass",
+				result: {
+					recommendedNextStep: "pass",
+					openFindings: [],
+					newFindings: [],
+					priorFindingStatuses: [],
+					gatesRun: [
+						{
+							command: "npm run green-verify",
+							result: "pass",
+						},
+					],
+					productionPathFindings: [],
+					openQuestions: [],
+					additionalObservations: [],
+				},
+				errors: [],
+				warnings: [],
+				artifacts: [],
+			},
+		});
+
+		const ledger = createStoryRunLedger({
+			specPackRoot: fixture.specPackRoot,
+			storyId: fixture.storyId,
+		});
+		const seededAttempt = await seedStoryRunAttempt({
+			specPackRoot: fixture.specPackRoot,
+			storyId: fixture.storyId,
+			status: "running",
+			finalPackage: null,
+			latestArtifacts: [
+				{
+					kind: "validation-result",
+					path: validatePath,
+					provenance: "current-run",
+				},
+				{
+					kind: "implementor-result",
+					path: implementorPath,
+					provenance: "current-run",
+				},
+				{
+					kind: "verifier-result",
+					path: verifierPath,
+					provenance: "current-run",
+				},
+			],
+			currentSummary: "story-verify completed with outcome pass and status ok.",
+			currentPhase: "story-lead-awaiting-action",
+			nextIntent: {
+				actionType: "await-story-lead-action",
+				summary:
+					"Review the latest verifier result and select the next bounded story-lead action.",
+				artifactRef: verifierPath,
+			},
+			event: {
+				type: "child-operation-completed",
+				summary: "story-verify completed with outcome pass and status ok.",
+				artifact: verifierPath,
+				data: {
+					actionType: "run-verify",
+					command: "story-verify",
+					outcome: "pass",
+					status: "ok",
+				},
+			},
+		});
+		const existingAttempt = await ledger.getAttemptByStoryRunId(
+			seededAttempt.storyRunId,
+		);
+		if (!existingAttempt) {
+			throw new Error("Expected seeded attempt to be readable.");
+		}
+
+		const runtime = await runStoryLead({
+			specPackRoot: fixture.specPackRoot,
+			storyId: fixture.storyId,
+			ledger,
+			mode: "resume",
+			existingAttempt,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
+		});
+
+		if (runtime.case !== "completed" || !runtime.finalPackage) {
+			throw new Error(
+				"Expected validate baseline seed fixture to complete with a final package.",
+			);
+		}
+
+		expect(runtime.finalPackage.outcome).toBe("accepted");
+		expect(runtime.finalPackage.logHandoff.storyReceiptDraft.baselineBeforeStory).toBe(
+			10,
+		);
+		expect(runtime.finalPackage.logHandoff.storyReceiptDraft.baselineAfterStory).toBe(
+			10,
+		);
+		expect(
+			runtime.finalPackage.acceptanceChecks.find(
+				(check) => check.name === "baseline-status",
+			)?.status,
+		).toBe("pass");
+	});
+
 	test("TC-3.11a and TC-3.11b record the smallest safe replay boundary for provider-output-invalid and context-window failures", async () => {
 		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
 			"story-lead-loop-replay-boundaries",
@@ -1374,6 +1512,139 @@ describe("story-lead loop", () => {
 					}),
 				}),
 			}),
+		);
+	});
+
+	test("writes story-lead planner provider streams when the planner output is invalid", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-lead-loop-planner-streams",
+			{
+				includeStoryLead: true,
+			},
+		);
+		const providerBinDir = await createTempDir("story-lead-planner-streams");
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: "not json\n",
+					stderr: "planner stderr detail\n",
+				},
+			],
+		});
+		const ledger = createStoryRunLedger({
+			specPackRoot,
+			storyId,
+		});
+
+		const result = await runStoryLead({
+			specPackRoot,
+			storyId,
+			ledger,
+			mode: "run",
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
+		});
+
+		if (result.case !== "interrupted") {
+			throw new Error("Expected invalid planner output to interrupt.");
+		}
+
+		const attempt = await ledger.getAttemptByStoryRunId(result.storyRunId);
+		if (!attempt) {
+			throw new Error("Expected story-run attempt to be readable.");
+		}
+		const events = await readJsonLines<Array<{ summary: string }>[number]>(
+			result.eventHistoryPath,
+		);
+		const latestEvent = events.at(-1);
+
+		expect(await Bun.file(attempt.stdoutPath).text()).toBe("not json\n");
+		expect(await Bun.file(attempt.stderrPath).text()).toBe(
+			"planner stderr detail\n",
+		);
+		expect(latestEvent?.summary).toContain(`stdout log=${attempt.stdoutPath}`);
+		expect(latestEvent?.summary).toContain(`stderr log=${attempt.stderrPath}`);
+	});
+
+	test("preserves prior planner prompt artifacts across failed turns and resume", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-lead-loop-prompt-artifact-history",
+			{
+				includeStoryLead: true,
+			},
+		);
+		const providerBinDir = await createTempDir(
+			"story-lead-loop-prompt-artifact-history-bin",
+		);
+		const storyLead = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: "not json\n",
+					stderr: "first planner failure\n",
+				},
+				{
+					stdout: "still not json\n",
+					stderr: "second planner failure\n",
+				},
+			],
+		});
+
+		const initial = await storyOrchestrateRun({
+			specPackRoot,
+			storyId,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
+		});
+		if (!initial.result || initial.result.case !== "interrupted") {
+			throw new Error(
+				`Expected initial run to interrupt after invalid planner output, received ${initial.result?.case ?? initial.status}.`,
+			);
+		}
+		const resumed = await storyOrchestrateResume({
+			specPackRoot,
+			storyId,
+			storyRunId: initial.result.storyRunId,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...storyLead.env,
+			},
+		});
+
+		expect(initial.result?.case).toBe("interrupted");
+		expect(resumed.result?.case).toBe("interrupted");
+
+		const firstPromptPath = join(
+			specPackRoot,
+			"artifacts",
+			storyId,
+			"story-lead",
+			"prompts",
+			"001-planner-turn-001.md",
+		);
+		const secondPromptPath = join(
+			specPackRoot,
+			"artifacts",
+			storyId,
+			"story-lead",
+			"prompts",
+			"001-planner-turn-002.md",
+		);
+
+		expect(await Bun.file(firstPromptPath).exists()).toBe(true);
+		expect(await Bun.file(secondPromptPath).exists()).toBe(true);
+		expect(await Bun.file(firstPromptPath).text()).toContain(
+			"This is planner turn 1.",
+		);
+		expect(await Bun.file(secondPromptPath).text()).toContain(
+			"This is planner turn 2.",
 		);
 	});
 });

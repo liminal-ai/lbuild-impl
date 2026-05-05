@@ -41,7 +41,7 @@ interface EpicVerifierReport {
 	crossStoryFindings: string[];
 	architectureFindings: string[];
 	epicCoverageAssessment: string[];
-	mockOrShimAuditFindings: string[];
+	productionPathFindings: string[];
 	blockingFindings: EpicVerifierFindingReport[];
 	nonBlockingFindings: EpicVerifierFindingReport[];
 	unresolvedItems: string[];
@@ -100,7 +100,7 @@ function baseVerifierReport(
 			"Artifacts persist under the expected cleanup and epic directories.",
 		],
 		epicCoverageAssessment: ["Epic AC-7.1 through AC-8.4 were reviewed."],
-		mockOrShimAuditFindings: [
+		productionPathFindings: [
 			"No inappropriate mocks remain on production paths.",
 		],
 		blockingFindings: [],
@@ -118,8 +118,8 @@ function baseVerifierReport(
 			overrides.architectureFindings ?? report.architectureFindings,
 		epicCoverageAssessment:
 			overrides.epicCoverageAssessment ?? report.epicCoverageAssessment,
-		mockOrShimAuditFindings:
-			overrides.mockOrShimAuditFindings ?? report.mockOrShimAuditFindings,
+		productionPathFindings:
+			overrides.productionPathFindings ?? report.productionPathFindings,
 		blockingFindings: overrides.blockingFindings ?? report.blockingFindings,
 		nonBlockingFindings:
 			overrides.nonBlockingFindings ?? report.nonBlockingFindings,

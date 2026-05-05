@@ -68,6 +68,7 @@ import type {
 	StoryLeadPlannerContext,
 	StoryLeadRiskAndDeviationReview,
 	StoryLeadVerification,
+	StoryOrchestrateValidateResult,
 	StoryRunCurrentSnapshot,
 	StoryRunEvent,
 } from "./story-orchestrate-contracts.js";
@@ -251,6 +252,8 @@ function artifactKindForCommand(
 	command: string | undefined,
 ): ArtifactRef["kind"] {
 	switch (command) {
+		case "story-orchestrate validate":
+			return "validation-result";
 		case "story-verify":
 			return "verifier-result";
 		case "story-self-review":
@@ -279,7 +282,7 @@ async function buildArtifactRefs(paths: string[]): Promise<ArtifactRef[]> {
 		refs.push({
 			kind: artifactKindForCommand(command),
 			path,
-			provenance: "fixture/preexisting",
+			provenance: "prior-run",
 		});
 	}
 
@@ -296,7 +299,7 @@ function reclassifyArtifacts(
 	}));
 }
 
-function recoverLegacyArtifactProvenance(
+function recoverArtifactProvenance(
 	artifact: ArtifactRef,
 ): NonNullable<ArtifactRef["provenance"]> {
 	if (artifact.provenance) {
@@ -311,14 +314,14 @@ function recoverLegacyArtifactProvenance(
 		case "ruling-response":
 			return "caller-input";
 		default:
-			return "fixture/preexisting";
+			return "prior-run";
 	}
 }
 
 function normalizeRecoveredArtifacts(artifacts: ArtifactRef[]): ArtifactRef[] {
 	return artifacts.map((artifact) => ({
 		...artifact,
-		provenance: recoverLegacyArtifactProvenance(artifact),
+		provenance: recoverArtifactProvenance(artifact),
 	}));
 }
 
@@ -559,34 +562,34 @@ function normalizeVerifierOutcome(
 	}
 }
 
-function verifierMockOrShimFindingAsRiskItem(input: {
+function verifierProductionPathFindingAsRiskItem(input: {
 	finding: string;
 	verifierArtifacts: ArtifactRef[];
 }): RiskOrDeviationItem {
 	return {
 		description: input.finding,
 		reasoning:
-			"Story verifier surfaced a mock/shim/fallback audit finding that must be explicitly resolved before story acceptance.",
+			"Story verifier surfaced a production-path audit note. Verifier outcome, open findings, and explicit story-lead risk decisions determine whether action or caller approval is required.",
 		evidence: [
 			...input.verifierArtifacts.map((artifact) => artifact.path),
 			input.finding,
 		],
-		approvalStatus: "needs-ruling",
+		approvalStatus: "not-required",
 		approvalSource: null,
 	};
 }
 
 function mergeRiskReview(input: {
 	base?: StoryLeadRiskAndDeviationReview;
-	shimMockFallbackDecisions: RiskOrDeviationItem[];
+	productionPathDecisionItems: RiskOrDeviationItem[];
 }): StoryLeadRiskAndDeviationReview {
 	return {
 		specDeviations: input.base?.specDeviations,
 		assumedRisks: input.base?.assumedRisks,
 		scopeChanges: input.base?.scopeChanges,
-		shimMockFallbackDecisions: [
-			...(input.base?.shimMockFallbackDecisions ?? []),
-			...input.shimMockFallbackDecisions,
+		productionPathDecisionItems: [
+			...(input.base?.productionPathDecisionItems ?? []),
+			...input.productionPathDecisionItems,
 		],
 	};
 }
@@ -791,6 +794,7 @@ function formatElapsed(startedAt: number): string {
 
 async function buildStoryLeadActionPrompt(input: {
 	specPackRoot: string;
+	attemptPaths: StoryRunAttemptPaths;
 	storyRunId: string;
 	mode: "run" | "resume";
 	currentSnapshot: StoryRunCurrentSnapshot;
@@ -828,6 +832,29 @@ async function buildStoryLeadActionPrompt(input: {
 		prompt: assembleStoryLeadPrompt(plannerContext),
 		context: plannerContext,
 	};
+}
+
+function plannerPromptArtifactPath(input: {
+	attemptPaths: StoryRunAttemptPaths;
+	plannerTurnIndex: number;
+}): string {
+	return join(
+		input.attemptPaths.artifactDir,
+		"prompts",
+		`${input.attemptPaths.attemptKey}-planner-turn-${String(
+			input.plannerTurnIndex,
+		).padStart(3, "0")}.md`,
+	);
+}
+
+async function writePlannerPromptArtifact(input: {
+	attemptPaths: StoryRunAttemptPaths;
+	plannerTurnIndex: number;
+	prompt: string;
+}): Promise<string> {
+	const path = plannerPromptArtifactPath(input);
+	await writeAtomic(path, `${input.prompt}\n`);
+	return path;
 }
 
 function semanticArtifactRefsFromEnvelope<TResult>(
@@ -926,6 +953,7 @@ function deriveBaselineFromImplementorResult(
 		| Pick<ImplementorResult, "tests">
 		| Pick<StorySelfReviewResult, "tests">
 		| undefined,
+	baselineBeforeStorySeed?: number | null,
 ):
 	| {
 			baselineBeforeStory: number | null;
@@ -943,7 +971,19 @@ function deriveBaselineFromImplementorResult(
 		typeof totalAfterStory !== "number" ||
 		typeof deltaFromPriorBaseline !== "number"
 	) {
-		return undefined;
+		if (typeof baselineBeforeStorySeed !== "number") {
+			return undefined;
+		}
+
+		const baselineAfterStory =
+			baselineBeforeStorySeed +
+			result.tests.added.length -
+			result.tests.removed.length;
+		return {
+			baselineBeforeStory: baselineBeforeStorySeed,
+			baselineAfterStory,
+			latestActualTotal: baselineAfterStory,
+		};
 	}
 
 	return {
@@ -951,6 +991,37 @@ function deriveBaselineFromImplementorResult(
 		baselineAfterStory: totalAfterStory,
 		latestActualTotal: totalAfterStory,
 	};
+}
+
+async function readValidationBaselineSeed(
+	artifacts: ArtifactRef[],
+): Promise<number | null> {
+	for (let index = artifacts.length - 1; index >= 0; index -= 1) {
+		const artifact = artifacts[index];
+		if (artifact?.kind !== "validation-result") {
+			continue;
+		}
+
+		try {
+			const parsed = JSON.parse(await readTextFile(artifact.path)) as {
+				command?: unknown;
+				result?: unknown;
+			};
+			if (parsed.command !== "story-orchestrate validate") {
+				continue;
+			}
+			const result =
+				parsed.result as StoryOrchestrateValidateResult | undefined;
+			const baseline = result?.baselineSeed?.baselineBeforeCurrentStory;
+			if (typeof baseline === "number") {
+				return baseline;
+			}
+		} catch {
+			continue;
+		}
+	}
+
+	return null;
 }
 
 function buildInitialArtifacts(input: {
@@ -1836,6 +1907,7 @@ export async function runStoryLead(
 		}
 
 		let terminalDecision: StoryLeadTerminalDecision | null = null;
+		let latestPlannerPromptArtifactPath: string | undefined;
 		const provider = providerForHarness(storyLeadAssignment.secondary_harness);
 		const adapter = createProviderAdapter(provider, {
 			env: input.env,
@@ -1853,6 +1925,11 @@ export async function runStoryLead(
 					provider,
 					model: storyLeadAssignment.model,
 					reasoningEffort: storyLeadAssignment.reasoning_effort,
+					...(latestPlannerPromptArtifactPath
+						? {
+								promptArtifactPath: latestPlannerPromptArtifactPath,
+							}
+						: {}),
 					...(executionSessionId ? { sessionId: executionSessionId } : {}),
 				},
 			});
@@ -2280,10 +2357,12 @@ export async function runStoryLead(
 										specPackRoot: input.specPackRoot,
 										storyId,
 										provider: continuation.provider,
-										sessionId: continuation.sessionId,
-										response,
-										orchestratorContext: action.inputs.orchestratorContext,
-										configPath: input.configPath,
+											sessionId: continuation.sessionId,
+											response,
+											orchestratorContext:
+												action.inputs.orchestratorContext ??
+												action.inputs.focus,
+											configPath: input.configPath,
 										env: input.env,
 										artifactPath: childArtifacts.artifactPath,
 										streamOutputPaths: childArtifacts.streamOutputPaths,
@@ -2380,7 +2459,6 @@ export async function runStoryLead(
 								storyVerify({
 									specPackRoot: input.specPackRoot,
 									storyId,
-									provider: action.inputs.provider,
 									orchestratorContext:
 										action.inputs.orchestratorContext ?? action.inputs.focus,
 									configPath: input.configPath,
@@ -2623,6 +2701,7 @@ export async function runStoryLead(
 			try {
 				const promptInput = await buildStoryLeadActionPrompt({
 					specPackRoot: input.specPackRoot,
+					attemptPaths,
 					storyRunId: attemptPaths.storyRunId,
 					mode: input.mode,
 					currentSnapshot,
@@ -2642,6 +2721,11 @@ export async function runStoryLead(
 				});
 				prompt = promptInput.prompt;
 				plannerContext = promptInput.context;
+				latestPlannerPromptArtifactPath = await writePlannerPromptArtifact({
+					attemptPaths,
+					plannerTurnIndex: plannerContext.plannerTurnIndex,
+					prompt,
+				});
 			} catch (error) {
 				if (isContextOverflowError(error)) {
 					const overflowEvent = buildEvent({
@@ -2682,6 +2766,10 @@ export async function runStoryLead(
 				timeoutMs: plannerBudget.effectiveTimeoutMs,
 				startupTimeoutMs: timeouts.provider_startup_timeout_ms,
 				silenceTimeoutMs: timeouts.story_implementor_silence_timeout_ms,
+				streamOutputPaths: {
+					stdoutPath: attemptPaths.stdoutPath,
+					stderrPath: attemptPaths.stderrPath,
+				},
 				resultSchema: storyLeadActionSchema,
 			});
 			if (
@@ -2747,6 +2835,11 @@ export async function runStoryLead(
 							errorCode: providerExecution.errorCode,
 							configuredPlannerTimeoutMs: timeouts.story_lead_planner_ms,
 							elapsedMs: providerExecution.elapsedMs,
+							...(latestPlannerPromptArtifactPath
+								? {
+										promptArtifactPath: latestPlannerPromptArtifactPath,
+									}
+								: {}),
 						},
 					});
 				}
@@ -2772,6 +2865,11 @@ export async function runStoryLead(
 					}).smallestSafeStep,
 					eventData: {
 						errorCode: providerExecution.errorCode,
+						...(latestPlannerPromptArtifactPath
+							? {
+									promptArtifactPath: latestPlannerPromptArtifactPath,
+								}
+							: {}),
 					},
 				});
 			}
@@ -2929,9 +3027,18 @@ export async function runStoryLead(
 					(await deriveVerifierOutcomeFromArtifacts(verifierArtifacts)))
 				: await deriveVerifierOutcomeFromArtifacts(verifierArtifacts);
 
+		const validationBaselineSeed = await readValidationBaselineSeed(
+			currentSnapshot.latestArtifacts,
+		);
 		const baselineFromCurrentRun =
-			deriveBaselineFromImplementorResult(latestSelfReviewResult) ??
-			deriveBaselineFromImplementorResult(latestImplementorResult);
+			deriveBaselineFromImplementorResult(
+				latestSelfReviewResult,
+				validationBaselineSeed,
+			) ??
+			deriveBaselineFromImplementorResult(
+				latestImplementorResult,
+				validationBaselineSeed,
+			);
 		const inheritedBaseline = input.reviewRequest
 			? undefined
 			: priorAcceptedFinalPackage?.logHandoff.cumulativeBaseline;
@@ -2997,16 +3104,16 @@ export async function runStoryLead(
 					],
 				} satisfies StoryLeadVerification)
 			: defaultVerification;
-		const verifierShimMockFallbackDecisions =
-			latestVerifierResult?.mockOrShimAuditFindings.map((finding) =>
-				verifierMockOrShimFindingAsRiskItem({
+		const verifierProductionPathDecisionItems =
+			latestVerifierResult?.productionPathFindings.map((finding) =>
+				verifierProductionPathFindingAsRiskItem({
 					finding,
 					verifierArtifacts,
 				}),
 			) ?? [];
 		const terminalRiskReview = mergeRiskReview({
 			base: resolvedTerminalDecision.riskAndDeviationReview,
-			shimMockFallbackDecisions: verifierShimMockFallbackDecisions,
+			productionPathDecisionItems: verifierProductionPathDecisionItems,
 		});
 
 		const commitReadiness =
@@ -3107,8 +3214,8 @@ export async function runStoryLead(
 								},
 							]
 						: (terminalRiskReview.scopeChanges ?? []),
-				shimMockFallbackDecisions:
-					terminalRiskReview.shimMockFallbackDecisions ?? [],
+				productionPathDecisionItems:
+					terminalRiskReview.productionPathDecisionItems ?? [],
 			},
 			diffReview: priorAcceptedFinalPackage?.diffReview ?? {
 				changedFiles:

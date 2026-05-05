@@ -20,7 +20,7 @@ Before your first story, you establish the conditions for the run. Nothing provi
 
 ## Exit condition
 
-Initialization is complete when `preflight` returns `ready`, `team-impl-log.md` holds the resolved configuration and gate decisions, and `impl-run.config.json` has been validated. At that point you are in stage 3 (story cycle) and ready to start the normal story path with `story-orchestrate`, dropping to primitive story commands only when recovery or direct diagnosis needs them.
+Initialization is complete when `preflight` returns `ready`, `team-impl-log.md` holds the resolved configuration and gate decisions, and `impl-run.config.json` has been validated. At that point you are in stage 3 (story cycle), where each story should first pass `story-orchestrate validate` before you launch `story-orchestrate run`.
 
 ## Guidance
 

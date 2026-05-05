@@ -151,6 +151,20 @@ function extractSelfNotes(events: StoryRunEvent[]): StoryLeadSelfNote[] {
 	});
 }
 
+function plannerTurnIndex(events: StoryRunEvent[]): number {
+	const consumedTurnEventTypes = new Set([
+		"story-lead-provider-started",
+		"story-lead-provider-failed",
+		"provider-output-invalid",
+		"story-lead-planner-timeout",
+		"story-lead-context-overflow",
+	]);
+
+	return (
+		events.filter((event) => consumedTurnEventTypes.has(event.type)).length + 1
+	);
+}
+
 function selfNotesDocument(notes: StoryLeadSelfNote[]): ContextDocument | null {
 	if (notes.length === 0) {
 		return null;
@@ -355,6 +369,7 @@ export async function buildStoryLeadPlannerContext(input: {
 		storyId: input.storyId,
 		storyRunId: input.storyRunId,
 		mode: input.mode,
+		plannerTurnIndex: plannerTurnIndex(events),
 		storyFile,
 		testPlan,
 		currentSnapshot,

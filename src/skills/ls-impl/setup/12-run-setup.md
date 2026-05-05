@@ -59,4 +59,4 @@ Also transcribe the run-critical notes you captured during onboarding and spec-p
 
 ## Exit
 
-`preflight` returned `ready`. `team-impl-log.md` holds the validated configuration, the gate decisions, and the transcribed retained notes. `impl-run.config.json` is validated and on disk. You are in stage 3 (story cycle); proceed to `phases/20-story-cycle.md`.
+`preflight` returned `ready`. `team-impl-log.md` holds the validated configuration, the gate decisions, and the transcribed retained notes. `impl-run.config.json` is validated and on disk. You are in stage 3 (story cycle); proceed to `phases/20-story-cycle.md`, where each story now starts with `story-orchestrate validate` before `story-orchestrate run`.

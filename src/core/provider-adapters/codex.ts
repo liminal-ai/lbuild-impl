@@ -7,6 +7,7 @@ import {
 	buildStrictCodexOutputSchema,
 	extractCodexStructuredOutputError,
 	formatCodexStructuredOutputError,
+	isCodexStructuredOutputRootSchema,
 } from "./codex-output-schema";
 import {
 	appendProviderOutputDiagnostics,
@@ -25,6 +26,7 @@ const CODEX_SANDBOX_MODES = new Set([
 	"workspace-write",
 	"danger-full-access",
 ] as const);
+const DEFAULT_CODEX_SANDBOX_MODE = "danger-full-access";
 const CODEX_APPROVAL_POLICIES = new Set([
 	"untrusted",
 	"on-failure",
@@ -45,10 +47,17 @@ export function createCodexAdapter(
 			const outputSchemaPath = join(tempDir, "output-schema.json");
 
 			try {
-				if (request.resultSchema && !request.resumeSessionId) {
+				const outputSchema =
+					request.resultSchema && !request.resumeSessionId
+						? buildStrictCodexOutputSchema(request.resultSchema)
+						: undefined;
+				const canUseStructuredOutputSchema =
+					outputSchema && isCodexStructuredOutputRootSchema(outputSchema);
+
+				if (canUseStructuredOutputSchema) {
 					await writeFile(
 						outputSchemaPath,
-						`${JSON.stringify(buildStrictCodexOutputSchema(request.resultSchema), null, 2)}\n`,
+						`${JSON.stringify(outputSchema, null, 2)}\n`,
 					);
 				}
 
@@ -72,7 +81,7 @@ export function createCodexAdapter(
 							request.model,
 							"-c",
 							`model_reasoning_effort=${request.reasoningEffort}`,
-							...(request.resultSchema
+							...(canUseStructuredOutputSchema
 								? ["--output-schema", outputSchemaPath]
 								: []),
 							"-o",
@@ -169,7 +178,9 @@ async function readOptionalFile(path: string): Promise<string | undefined> {
 function buildCodexGlobalArgs(
 	env?: Record<string, string | undefined>,
 ): string[] {
-	const sandboxMode = readCodexSetting(env, "LBUILD_IMPL_CODEX_SANDBOX_MODE");
+	const sandboxMode =
+		readCodexSetting(env, "LBUILD_IMPL_CODEX_SANDBOX_MODE") ??
+		DEFAULT_CODEX_SANDBOX_MODE;
 	const approvalPolicy = readCodexSetting(
 		env,
 		"LBUILD_IMPL_CODEX_APPROVAL_POLICY",

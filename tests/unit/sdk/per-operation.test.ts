@@ -9,6 +9,7 @@ import {
 	quickFix,
 	storyContinue,
 	storyImplement,
+	storyOrchestrateValidate,
 	storySelfReview,
 	storyVerify,
 } from "../../../src/sdk/index";
@@ -139,6 +140,17 @@ describe("sdk per-operation envelopes", () => {
 		});
 
 		expect(envelope.command).toBe("story-verify");
+		expect(envelope.status).toBe("blocked");
+	});
+
+	test("story-orchestrate validate returns a structured envelope on invalid run-config", async () => {
+		const specPackRoot = await createSpecPack("sdk-op-story-orchestrate-validate");
+		const envelope = await storyOrchestrateValidate({
+			specPackRoot,
+			storyId: "00-foundation",
+		});
+
+		expect(envelope.command).toBe("story-orchestrate validate");
 		expect(envelope.status).toBe("blocked");
 	});
 });

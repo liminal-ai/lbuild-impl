@@ -6,8 +6,9 @@ This is the main process reference after setup. Use it to decide which bounded C
 
 1. Setup: resolve the spec pack, initialize or resume `team-impl-log.md`, and discover verification gates.
 2. Preflight: validate the authored run configuration before any provider-backed work starts.
-3. Story cycle: implement, self-review, verify, run the final story gate, record the story receipt, then decide whether to advance.
-4. Closeout: complete cleanup, epic verification, synthesis, and the final orchestrator-owned gate.
+3. Story validate: run `story-orchestrate validate` for the active story to confirm readiness before launch and make sure the baseline needed for later acceptance is available.
+4. Story cycle: implement, self-review, verify, run the final story gate, record the story receipt, then decide whether to advance.
+5. Closeout: complete cleanup, epic verification, synthesis, and the final orchestrator-owned gate.
 
 ## Setup Rules
 
@@ -17,6 +18,7 @@ This is the main process reference after setup. Use it to decide which bounded C
 - When gate-discovery rationale is available, record candidate gates considered and why the selected story and epic gates won.
 - If gate policy is ambiguous after checking project policy docs and package scripts, pause with a user decision instead of guessing.
 - Resume from disk artifacts, not conversation memory.
+- Before starting a story, run `story-orchestrate validate` and do not launch `story-orchestrate run` until validate returns `ready`.
 
 ## Durable Artifacts
 

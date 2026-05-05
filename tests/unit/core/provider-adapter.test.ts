@@ -691,7 +691,9 @@ describe("provider availability checks", () => {
 		});
 
 		const invocations = await readJsonLines<{ args: string[] }>(logPath);
-		expect(invocations[0]?.args.slice(0, 6)).toEqual([
+		expect(invocations[0]?.args.slice(0, 8)).toEqual([
+			"-s",
+			"danger-full-access",
 			"exec",
 			"--json",
 			"-m",
@@ -705,7 +707,9 @@ describe("provider availability checks", () => {
 		expect(invocations[0]?.args[invocations[0].args.length - 1]).toBe(
 			'{"step":"implement"}',
 		);
-		expect(invocations[1]?.args.slice(0, 3)).toEqual([
+		expect(invocations[1]?.args.slice(0, 5)).toEqual([
+			"-s",
+			"danger-full-access",
 			"exec",
 			"resume",
 			"--json",
@@ -801,6 +805,57 @@ describe("provider availability checks", () => {
 			"never",
 			"exec",
 			"resume",
+		]);
+	});
+
+	test("defaults Codex executions to danger-full-access when no sandbox override is provided", async () => {
+		const { createCodexAdapter } = await import(
+			"../../../src/core/provider-adapters/codex"
+		);
+
+		const providerBinDir = await createTempDir(
+			"provider-adapter-codex-default-sandbox",
+		);
+		const { env, logPath } = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: codexJsonlEventStream(
+						"codex-default-sandbox-001",
+						JSON.stringify({
+							ok: true,
+						}),
+					),
+					lastMessage: JSON.stringify({
+						ok: true,
+					}),
+				},
+			],
+		});
+		const adapter = createCodexAdapter({
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...env,
+			},
+		});
+
+		await adapter.execute({
+			prompt: '{"step":"verify"}',
+			cwd: ROOT,
+			model: "gpt-5.5",
+			reasoningEffort: "high",
+			timeoutMs: 1_000,
+			resultSchema: z.object({
+				ok: z.boolean(),
+			}),
+		});
+
+		const invocations = await readJsonLines<{ args: string[] }>(logPath);
+		expect(invocations[0]?.args.slice(0, 3)).toEqual([
+			"-s",
+			"danger-full-access",
+			"exec",
 		]);
 	});
 
@@ -934,7 +989,9 @@ describe("provider availability checks", () => {
 		expect(second.sessionId).toBe("codex-verifier-fresh-002");
 
 		const invocations = await readJsonLines<{ args: string[] }>(logPath);
-		expect(invocations[0]?.args.slice(0, 6)).toEqual([
+		expect(invocations[0]?.args.slice(0, 8)).toEqual([
+			"-s",
+			"danger-full-access",
 			"exec",
 			"--json",
 			"-m",
@@ -947,7 +1004,9 @@ describe("provider availability checks", () => {
 		expect(invocations[0]?.args[invocations[0].args.length - 1]).toBe(
 			'{"step":"verify-1"}',
 		);
-		expect(invocations[1]?.args.slice(0, 6)).toEqual([
+		expect(invocations[1]?.args.slice(0, 8)).toEqual([
+			"-s",
+			"danger-full-access",
 			"exec",
 			"--json",
 			"-m",
@@ -960,6 +1019,72 @@ describe("provider availability checks", () => {
 		expect(invocations[1]?.args[invocations[1].args.length - 1]).toBe(
 			'{"step":"verify-2"}',
 		);
+	});
+
+	test("skips Codex --output-schema for root union schemas while still parsing the result", async () => {
+		const { createCodexAdapter } = await import(
+			"../../../src/core/provider-adapters/codex"
+		);
+		const providerBinDir = await createTempDir("provider-adapter-codex-union");
+		const sessionId = "codex-root-union-001";
+		const { env, logPath } = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			responses: [
+				{
+					stdout: codexJsonlEventStream(
+						sessionId,
+						JSON.stringify({
+							action: "run",
+							reason: "schema root unions are parsed locally",
+						}),
+					),
+					lastMessage: JSON.stringify({
+						action: "run",
+						reason: "schema root unions are parsed locally",
+					}),
+				},
+			],
+		});
+		const adapter = createCodexAdapter({
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...env,
+			},
+		});
+		const resultSchema = z.discriminatedUnion("action", [
+			z
+				.object({
+					action: z.literal("run"),
+					reason: z.string(),
+				})
+				.strict(),
+			z
+				.object({
+					action: z.literal("stop"),
+					reason: z.string(),
+				})
+				.strict(),
+		]);
+
+		const execution = await adapter.execute({
+			prompt: '{"step":"plan"}',
+			cwd: ROOT,
+			model: "gpt-5.5",
+			reasoningEffort: "medium",
+			timeoutMs: 1_000,
+			resultSchema,
+		});
+
+		expect(execution.exitCode).toBe(0);
+		expect(execution.parsedResult).toEqual({
+			action: "run",
+			reason: "schema root unions are parsed locally",
+		});
+
+		const invocations = await readJsonLines<{ args: string[] }>(logPath);
+		expect(invocations[0]?.args).not.toContain("--output-schema");
+		expect(invocations[0]?.args).toContain("-o");
 	});
 
 	test("launches fresh Claude executions without implicit resume when a verifier reruns", async () => {

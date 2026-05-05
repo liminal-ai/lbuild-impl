@@ -14,7 +14,7 @@ Use `lbuild-impl ...` as the portable invocation form.
 - `story-continue` — continue a retained implementor session with bounded follow-up work
 - `story-self-review` — run explicit same-session self-review passes against the retained implementor session
 - `story-verify` — start or continue the retained verifier session for one story
-- `story-orchestrate` — run, resume, or inspect one durable story-lead attempt for one story
+- `story-orchestrate` — run, validate, resume, or inspect one durable story-lead attempt for one story
 - `quick-fix` — run a narrow, bounded correction
 - `epic-cleanup` — apply cleanup-only corrections before epic verification
 - `epic-verify` — run fresh epic-level verification
@@ -130,6 +130,12 @@ Outcomes: `pass`, `revise`, `block`, `needs-human-ruling`.
 
 Runs the composed story-lead surface for one story. Story-lead owns the internal loop for one story only and returns a final package, but impl-lead remains the caller harness that reviews, accepts, rejects, or reopens the result.
 
+Validate:
+
+```bash
+lbuild-impl story-orchestrate validate --spec-pack-root <path> --story-id <story-id> [--config <path>] --json
+```
+
 Run:
 
 ```bash
@@ -152,6 +158,7 @@ Use `spec-pack-root + story-id` as the stable recovery key when the story run id
 
 Story-orchestrate result notes:
 
+- `validate` is the readiness checkpoint before `run`. It confirms that the story is startable, that the required gates are known, and that the baseline needed for later acceptance is available.
 - `resume` and `status` return `invalid-story-run-id` when you supply an explicit story-run id that does not exist for that story. They do not silently fall back to another attempt.
 - `resume` returns the durable persisted caller-input artifact reference when it accepts a review request or ruling, so the caller can keep the exact on-disk path instead of only the original input payload.
 

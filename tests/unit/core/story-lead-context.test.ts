@@ -273,6 +273,7 @@ describe("story-lead context", () => {
 
 		expect(context.storyFile.content).toContain("STORY_SENTINEL");
 		expect(context.testPlan.content).toContain("TEST_PLAN_SENTINEL");
+		expect(context.plannerTurnIndex).toBe(1);
 		expect(context.currentSnapshot.content).toContain(
 			"awaiting_story_lead_action",
 		);
@@ -302,6 +303,14 @@ describe("story-lead context", () => {
 		expect(prompt).toContain("CALLER_INPUT_FULL_CONTENT");
 		expect(prompt).toContain("earlier durable reminder");
 		expect(prompt).toContain("latest durable reminder");
+		expect(prompt).toContain("## Current Run Index");
+		expect(prompt).toContain("<current_response>");
+		expect(prompt).toContain("</current_response>");
+		expect(prompt).toContain("<history_responses>");
+		expect(prompt).toContain("</history_responses>");
+		expect(prompt).toContain("```yaml");
+		expect(prompt).toContain("latest_response_kind: quick-fix-result");
+		expect(prompt).toContain("older_response_count: 2");
 		expect(prompt).not.toContain("EPIC_SENTINEL");
 		expect(prompt).not.toContain("TECH_DESIGN_SENTINEL");
 		expect(prompt).not.toContain("GIT_STATUS_SENTINEL");
@@ -335,11 +344,71 @@ describe("story-lead context", () => {
 		const prompt = assembleStoryLeadPrompt(context);
 
 		expect(context.priorSelfNotes).toEqual([]);
+		expect(context.plannerTurnIndex).toBe(1);
 		expect(context.seededSelfNoteInstruction).toContain(
 			"not a prior runtime self-note",
 		);
 		expect(prompt).toContain("## Seeded Self-Note Example");
 		expect(prompt).toContain("include `selfNote`");
+		expect(prompt).toContain(
+			"No prior bounded child response is recorded yet.",
+		);
+	});
+
+	test("renders non-JSON response payloads as nested YAML blocks", async () => {
+		const { specPackRoot, storyId } = await createStoryOrchestrateSpecPack(
+			"story-lead-context-yaml-fallback",
+		);
+		const notePath = join(
+			specPackRoot,
+			"artifacts",
+			storyId,
+			"001-implementor.txt",
+		);
+		await writeTextFile(
+			notePath,
+			["plain text line 1", "plain text line 2"].join("\n"),
+		);
+		const { attempt, snapshot } = await createCurrentSnapshotFixture({
+			specPackRoot,
+			storyId,
+			latestArtifacts: [
+				{
+					kind: "implementor-result",
+					path: notePath,
+				},
+			],
+		});
+
+		const context = await buildStoryLeadPlannerContext({
+			specPackRoot,
+			storyId,
+			storyRunId: attempt.storyRunId,
+			mode: "resume",
+			currentSnapshot: {
+				...snapshot,
+				latestArtifacts: [
+					{
+						kind: "implementor-result",
+						path: notePath,
+					},
+				],
+			},
+			currentSnapshotPath: attempt.currentSnapshotPath,
+			eventHistoryPath: attempt.eventHistoryPath,
+			provider: "codex",
+			model: "gpt-5.4",
+			runtimeSettings: {
+				plannerTimeoutMs: 600_000,
+				wholeRunTimeoutMs: 7_200_000,
+				providerStartupTimeoutMs: 300_000,
+			},
+		});
+		const prompt = assembleStoryLeadPrompt(context);
+
+		expect(prompt).toContain("payload: |-");
+		expect(prompt).toContain("  plain text line 1");
+		expect(prompt).toContain("  plain text line 2");
 	});
 
 	test("TC-2.4b and TC-2.8a fail loudly when event history is malformed instead of reseeding first-turn guidance", async () => {

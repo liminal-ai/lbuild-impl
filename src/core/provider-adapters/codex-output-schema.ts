@@ -94,6 +94,12 @@ export function buildStrictCodexOutputSchema(
 	return jsonSchema;
 }
 
+export function isCodexStructuredOutputRootSchema(
+	schema: Record<string, unknown>,
+): boolean {
+	return schema.type === "object";
+}
+
 export interface CodexStructuredOutputError {
 	message: string;
 	code?: string;

@@ -66,7 +66,7 @@ function createFinalPackage() {
 				},
 			],
 			scopeChanges: [],
-			shimMockFallbackDecisions: [],
+			productionPathDecisionItems: [],
 		},
 		diffReview: {
 			changedFiles: [
@@ -201,7 +201,7 @@ describe("story-orchestrate contracts", () => {
 				],
 			},
 			riskAndDeviationReview: {
-				shimMockFallbackDecisions: [
+				productionPathDecisionItems: [
 					{
 						description: "Production shim remains in the implementation path.",
 						reasoning: "Verifier requires explicit approval.",
@@ -219,7 +219,7 @@ describe("story-orchestrate contracts", () => {
 		}
 		expect(action.verification?.findings[0]?.status).toBe("accepted-risk");
 		expect(
-			action.riskAndDeviationReview?.shimMockFallbackDecisions?.[0]
+			action.riskAndDeviationReview?.productionPathDecisionItems?.[0]
 				?.approvalStatus,
 		).toBe("needs-ruling");
 	});

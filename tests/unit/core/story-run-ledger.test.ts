@@ -99,7 +99,7 @@ describe("story-run ledger", () => {
 					specDeviations: [],
 					assumedRisks: [],
 					scopeChanges: [],
-					shimMockFallbackDecisions: [],
+					productionPathDecisionItems: [],
 				},
 				diffReview: {
 					changedFiles: [],

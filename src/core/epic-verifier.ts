@@ -297,7 +297,7 @@ function buildVerifierResult(input: {
 		crossStoryFindings: input.payload.crossStoryFindings,
 		architectureFindings: input.payload.architectureFindings,
 		epicCoverageAssessment: input.payload.epicCoverageAssessment,
-		mockOrShimAuditFindings: input.payload.mockOrShimAuditFindings,
+		productionPathFindings: input.payload.productionPathFindings,
 		blockingFindings: input.payload.blockingFindings,
 		nonBlockingFindings: input.payload.nonBlockingFindings,
 		unresolvedItems: input.payload.unresolvedItems,

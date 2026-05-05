@@ -19,6 +19,7 @@ export {
 	storyOrchestrateResume,
 	storyOrchestrateRun,
 	storyOrchestrateStatus,
+	storyOrchestrateValidate,
 	storySelfReview,
 	storyVerify,
 } from "./operations/index.js";

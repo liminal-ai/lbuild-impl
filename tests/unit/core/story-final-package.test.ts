@@ -60,14 +60,14 @@ describe("story final package", () => {
 		expect(finalPackage.riskAndDeviationReview.assumedRisks).toEqual([]);
 		expect(finalPackage.riskAndDeviationReview.scopeChanges).toEqual([]);
 		expect(
-			finalPackage.riskAndDeviationReview.shimMockFallbackDecisions,
+			finalPackage.riskAndDeviationReview.productionPathDecisionItems,
 		).toEqual([]);
 		expect(finalPackage.acceptanceChecks.map((check) => check.name)).toEqual([
 			"story-gate-result",
 			"final-verifier-result",
 			"unresolved-findings-status",
 			"scope-change-status",
-			"shim-mock-fallback-status",
+			"production-path-status",
 			"baseline-status",
 			"receipt-readiness",
 			"commit-readiness",
@@ -392,7 +392,7 @@ describe("story final package", () => {
 						approvalSource: null,
 					},
 				],
-				shimMockFallbackDecisions: [
+				productionPathDecisionItems: [
 					{
 						description: "Approved compatibility shim remains.",
 						reasoning: "Impl-lead accepted the compatibility shim.",
@@ -465,7 +465,7 @@ describe("story final package", () => {
 				findings: [],
 			},
 			riskAndDeviationReview: {
-				shimMockFallbackDecisions: [
+				productionPathDecisionItems: [
 					{
 						description: "Production fallback still needs caller approval.",
 						reasoning:
@@ -491,7 +491,7 @@ describe("story final package", () => {
 		expect(finalPackage.outcome).toBe("needs-ruling");
 		expect(finalPackage.rulingRequest).toEqual(
 			expect.objectContaining({
-				decisionType: "shim-mock-fallback",
+				decisionType: "production-path",
 			}),
 		);
 		expect(finalPackage.cleanupHandoff.acceptedRiskItems).toEqual([]);
@@ -500,7 +500,7 @@ describe("story final package", () => {
 		expect(finalPackage.recommendedImplLeadAction).toBe("ask-ruling");
 	});
 
-	test("TC-5.3a marks evidence provenance in the final package so current-run proof is distinguishable from prior, caller-input, and preexisting files", () => {
+	test("TC-5.3a marks evidence provenance in the final package so current-run proof is distinguishable from prior and caller-input files", () => {
 		const finalPackage = buildStoryLeadFinalPackage({
 			outcome: "blocked",
 			storyId: "00-foundation",
@@ -518,7 +518,7 @@ describe("story final package", () => {
 					{
 						kind: "implementor-result",
 						path: "/tmp/spec-pack/artifacts/00-foundation/seeded-implementor.json",
-						provenance: "fixture/preexisting",
+						provenance: "prior-run",
 					},
 				],
 				verifierArtifacts: [
@@ -548,7 +548,7 @@ describe("story final package", () => {
 					provenance: "current-run",
 				}),
 				expect.objectContaining({
-					provenance: "fixture/preexisting",
+					provenance: "prior-run",
 				}),
 			]),
 		);
@@ -564,7 +564,7 @@ describe("story final package", () => {
 		]);
 	});
 
-	test("TC-5.3b does not treat preseeded artifacts as current-run proof in receipt readiness", () => {
+	test("TC-5.3b does not treat prior evidence artifacts as current-run proof in receipt readiness", () => {
 		const finalPackage = buildStoryLeadFinalPackage({
 			outcome: "accepted",
 			storyId: "00-foundation",
@@ -577,14 +577,14 @@ describe("story final package", () => {
 					{
 						kind: "implementor-result",
 						path: "/tmp/spec-pack/artifacts/00-foundation/seeded-implementor.json",
-						provenance: "fixture/preexisting",
+						provenance: "prior-run",
 					},
 				],
 				verifierArtifacts: [
 					{
 						kind: "verifier-result",
 						path: "/tmp/spec-pack/artifacts/00-foundation/seeded-verifier.json",
-						provenance: "fixture/preexisting",
+						provenance: "prior-run",
 					},
 				],
 			},

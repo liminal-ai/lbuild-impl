@@ -18,6 +18,7 @@ export {
 	storyOrchestrateResume,
 	storyOrchestrateRun,
 	storyOrchestrateStatus,
+	storyOrchestrateValidate,
 } from "./story-orchestrate.js";
 export { storySelfReview } from "./story-self-review.js";
 export { storyVerify } from "./story-verify.js";

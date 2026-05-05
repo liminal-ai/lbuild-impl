@@ -2,8 +2,12 @@ import { expect, test } from "vitest";
 import { epicCleanupProviderPayloadSchema } from "../../../src/core/epic-cleanup";
 import { epicSynthesisProviderPayloadSchema } from "../../../src/core/epic-synthesizer";
 import { epicVerifierProviderPayloadSchema } from "../../../src/core/epic-verifier";
-import { buildStrictCodexOutputSchema } from "../../../src/core/provider-adapters/codex-output-schema";
+import {
+	buildStrictCodexOutputSchema,
+	isCodexStructuredOutputRootSchema,
+} from "../../../src/core/provider-adapters/codex-output-schema";
 import { storyImplementorProviderPayloadSchema } from "../../../src/core/story-implementor";
+import { storyLeadActionSchema } from "../../../src/core/story-orchestrate-contracts";
 import { storyVerifierProviderPayloadSchema } from "../../../src/core/story-verifier";
 
 function assertStrictObjects(schema: unknown) {
@@ -99,4 +103,11 @@ test("all fresh Codex provider payload schemas are OpenAI strict-mode compatible
 		const jsonSchema = buildStrictCodexOutputSchema(schema);
 		assertStrictObjects(jsonSchema);
 	}
+});
+
+test("story-lead action schema is a root union and must not be passed as a Codex structured output schema", () => {
+	const schema = buildStrictCodexOutputSchema(storyLeadActionSchema);
+
+	expect(schema).toHaveProperty("oneOf");
+	expect(isCodexStructuredOutputRootSchema(schema)).toBe(false);
 });

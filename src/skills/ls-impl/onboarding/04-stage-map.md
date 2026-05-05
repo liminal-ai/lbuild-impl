@@ -14,7 +14,7 @@ Guidance: `setup/10-spec-pack-discovery.md`, `setup/11-spec-pack-read-order.md`,
 
 ## 3. Story cycle
 
-For each story in order: launch implementation, review verifier evidence, route follow-up work, run the final story gate yourself, record the receipt, and advance. The cycle repeats until every story is accepted and committed.
+For each story in order: prepare any story-local config, run `story-orchestrate validate`, launch implementation only after validation is `ready`, review verifier evidence, route follow-up work, run the final story gate yourself, record the receipt, and advance. The cycle repeats until every story is accepted and committed.
 
 Guidance: `phases/20-story-cycle.md`, `phases/21-verification-and-fix-routing.md`.
 

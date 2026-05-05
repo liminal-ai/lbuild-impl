@@ -42,7 +42,7 @@ interface StoryVerifierPayload {
 		unverified: string[];
 	};
 	gatesRun: Array<{ command: string; result: "pass" | "fail" | "not-run" }>;
-	mockOrShimAuditFindings: string[];
+	productionPathFindings: string[];
 	recommendedNextStep: "pass" | "revise" | "block" | "needs-human-ruling";
 	recommendedFixScope:
 		| "same-session-implementor"
@@ -101,7 +101,7 @@ function baseInitialPayload(
 				result: "not-run",
 			},
 		],
-		mockOrShimAuditFindings: [],
+		productionPathFindings: [],
 		recommendedNextStep: "pass",
 		recommendedFixScope: "same-session-implementor",
 		openQuestions: [],
@@ -198,7 +198,9 @@ test("initial story-verify starts one retained verifier session and returns cont
 		codexProvider.logPath,
 	);
 	expect(codexInvocations).toHaveLength(1);
-	expect(codexInvocations[0]?.args.slice(0, 6)).toEqual([
+	expect(codexInvocations[0]?.args.slice(0, 8)).toEqual([
+		"-s",
+		"danger-full-access",
 		"exec",
 		"--json",
 		"-m",
@@ -314,7 +316,9 @@ test("follow-up story-verify resumes the retained verifier session with implemen
 		codexProvider.logPath,
 	);
 	expect(codexInvocations).toHaveLength(2);
-	expect(codexInvocations[1]?.args.slice(0, 4)).toEqual([
+	expect(codexInvocations[1]?.args.slice(0, 6)).toEqual([
+		"-s",
+		"danger-full-access",
 		"exec",
 		"resume",
 		"--json",

@@ -29,7 +29,7 @@ Next, begin initialization. These files guide you to find the spec-pack root, co
 
 ## Read When Entering Later Phases
 
-- Story implementation and progression. This is the default happy path for normal story work and should start with `story-orchestrate`: `phases/20-story-cycle.md`
+- Story implementation and progression. This is the default happy path for normal story work and should start with `story-orchestrate validate`, then `story-orchestrate run`: `phases/20-story-cycle.md`
 - Verification, disagreement handling, and fix routing: `phases/21-verification-and-fix-routing.md`
 - Recovery and resume: `phases/22-recovery-and-resume.md`
 - Cleanup, epic verification, synthesis, and closeout: `phases/23-cleanup-and-closeout.md`

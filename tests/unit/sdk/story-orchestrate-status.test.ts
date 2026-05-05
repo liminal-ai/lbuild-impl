@@ -170,7 +170,7 @@ describe("story-orchestrate status sdk operation", () => {
 		});
 		await Bun.write(
 			attempt.eventHistoryPath,
-			[
+			`${[
 				JSON.stringify({
 					storyRunId: attempt.storyRunId,
 					sequence: 1,
@@ -193,7 +193,7 @@ describe("story-orchestrate status sdk operation", () => {
 					summary: `Story-lead finalized ${attempt.storyRunId} with outcome accepted.`,
 					artifact: attempt.finalPackagePath,
 				}),
-			].join("\n") + "\n",
+			].join("\n")}\n`,
 		);
 
 		const envelope = await storyOrchestrateStatus({

@@ -113,7 +113,13 @@ describe("prompt assembly", () => {
 		expect(assembled.prompt).toContain("Current verifier mode: `initial`.");
 		expect(assembled.prompt).toContain("evidence-backed");
 		expect(assembled.prompt).toContain(
-			"Audit production paths for mocks, shims, or fake adapters",
+			'"recommendedNextStep": "pass" | "revise" | "block" | "needs-human-ruling"',
+		);
+		expect(assembled.prompt).toContain(
+			"If any `priorFindingStatuses[].status` is `needs-human-ruling`, set `recommendedNextStep` to `needs-human-ruling`.",
+		);
+		expect(assembled.prompt).toContain(
+			"Audit production paths for fake adapters, shims, placeholders",
 		);
 	});
 

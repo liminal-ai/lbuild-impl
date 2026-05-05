@@ -33,7 +33,7 @@ function findingAsCleanupItem(input: {
 export function buildCleanupHandoff(input: {
 	acceptedRiskItems?: RiskOrDeviationItem[];
 	deferredItems?: RiskOrDeviationItem[];
-	shimMockFallbackItems?: RiskOrDeviationItem[];
+	productionPathItems?: RiskOrDeviationItem[];
 	verification: StoryLeadVerification;
 	replayBoundary?: ReplayBoundary | null;
 }): CleanupHandoff {
@@ -41,7 +41,7 @@ export function buildCleanupHandoff(input: {
 		...(input.acceptedRiskItems ?? []).filter(
 			(item) => item.approvalStatus === "approved",
 		),
-		...(input.shimMockFallbackItems ?? []).filter(
+		...(input.productionPathItems ?? []).filter(
 			(item) => item.approvalStatus === "approved",
 		),
 		...input.verification.findings
@@ -59,7 +59,7 @@ export function buildCleanupHandoff(input: {
 		...(input.deferredItems ?? []).filter(
 			(item) => item.approvalStatus === "not-required",
 		),
-		...(input.shimMockFallbackItems ?? []).filter(
+		...(input.productionPathItems ?? []).filter(
 			(item) => item.approvalStatus === "not-required",
 		),
 		...input.verification.findings

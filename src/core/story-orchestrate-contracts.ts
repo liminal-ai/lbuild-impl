@@ -1,7 +1,10 @@
 import { z } from "zod";
 
+import { implRunConfigSchema } from "./config-schema.js";
 import {
 	continuationHandleSchema,
+	providerMatrixSchema,
+	verificationGatesSchema,
 	providerIdSchema,
 } from "./result-contracts.js";
 import {
@@ -24,7 +27,6 @@ export const artifactProvenanceSchema = z.enum([
 	"current-run",
 	"prior-run",
 	"caller-input",
-	"fixture/preexisting",
 ]);
 
 export const artifactRefSchema = z
@@ -157,6 +159,7 @@ export const storyLeadPlannerContextSchema = z
 		storyId: z.string().min(1),
 		storyRunId: z.string().min(1),
 		mode: z.enum(["run", "resume"]),
+		plannerTurnIndex: z.number().int().positive(),
 		storyFile: contextDocumentSchema,
 		testPlan: contextDocumentSchema,
 		currentSnapshot: contextDocumentSchema,
@@ -364,7 +367,7 @@ export const storyLeadRiskAndDeviationReviewSchema = z
 		specDeviations: z.array(riskOrDeviationItemSchema).optional(),
 		assumedRisks: z.array(riskOrDeviationItemSchema).optional(),
 		scopeChanges: z.array(riskOrDeviationItemSchema).optional(),
-		shimMockFallbackDecisions: z.array(riskOrDeviationItemSchema).optional(),
+		productionPathDecisionItems: z.array(riskOrDeviationItemSchema).optional(),
 	})
 	.strict();
 
@@ -596,7 +599,7 @@ export const storyLeadFinalPackageSchema = z
 				specDeviations: z.array(riskOrDeviationItemSchema),
 				assumedRisks: z.array(riskOrDeviationItemSchema),
 				scopeChanges: z.array(riskOrDeviationItemSchema),
-				shimMockFallbackDecisions: z.array(riskOrDeviationItemSchema),
+				productionPathDecisionItems: z.array(riskOrDeviationItemSchema),
 			})
 			.strict(),
 		diffReview: diffReviewSchema,
@@ -688,9 +691,41 @@ export const storyRunSelectionSchema = z.discriminatedUnion("case", [
 			case: z.literal("invalid-story-run-id"),
 			storyId: z.string().min(1),
 			storyRunId: z.string().min(1),
-		})
-		.strict(),
+	})
+	.strict(),
 ]);
+
+export const storyOrchestrateBaselineSeedSchema = z
+	.object({
+		workspaceRoot: z.string().min(1),
+		baselineBeforeCurrentStory: z.number().int().nonnegative(),
+		testFilePattern: z.string().min(1),
+	})
+	.strict();
+
+export const storyOrchestrateValidateCheckSchema = z
+	.object({
+		name: z.string().min(1),
+		status: z.enum(["pass", "fail", "unknown"]),
+		summary: z.string().min(1),
+		evidence: z.array(z.string().min(1)),
+	})
+	.strict();
+
+export const storyOrchestrateValidateResultSchema = z
+	.object({
+		status: z.enum(["ready", "needs-user-decision", "blocked"]),
+		storyId: z.string().min(1),
+		storyRunSelection: storyRunSelectionSchema,
+		validatedConfig: implRunConfigSchema.optional(),
+		providerMatrix: providerMatrixSchema.optional(),
+		verificationGates: verificationGatesSchema.optional(),
+		baselineSeed: storyOrchestrateBaselineSeedSchema.optional(),
+		checks: z.array(storyOrchestrateValidateCheckSchema),
+		blockers: z.array(z.string()),
+		notes: z.array(z.string()),
+	})
+	.strict();
 
 export const storyOrchestrateRunResultSchema = z.discriminatedUnion("case", [
 	z
@@ -942,6 +977,15 @@ export type WriteFinalPackageInput = z.infer<
 	typeof writeFinalPackageInputSchema
 >;
 export type StoryRunSelection = z.infer<typeof storyRunSelectionSchema>;
+export type StoryOrchestrateBaselineSeed = z.infer<
+	typeof storyOrchestrateBaselineSeedSchema
+>;
+export type StoryOrchestrateValidateCheck = z.infer<
+	typeof storyOrchestrateValidateCheckSchema
+>;
+export type StoryOrchestrateValidateResult = z.infer<
+	typeof storyOrchestrateValidateResultSchema
+>;
 export type StoryOrchestrateRunResult = z.infer<
 	typeof storyOrchestrateRunResultSchema
 >;

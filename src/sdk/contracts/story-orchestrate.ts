@@ -9,6 +9,7 @@ import {
 	type CallerRulingResponse as CoreCallerRulingResponse,
 	type ImplLeadReviewRequest as CoreImplLeadReviewRequest,
 	type StoryLeadFinalPackage as CoreStoryLeadFinalPackage,
+	type StoryOrchestrateValidateResult as CoreStoryOrchestrateValidateResult,
 	type StoryOrchestrateResumeResult as CoreStoryOrchestrateResumeResult,
 	type StoryOrchestrateRunResult as CoreStoryOrchestrateRunResult,
 	type StoryOrchestrateStatusResult as CoreStoryOrchestrateStatusResult,
@@ -17,6 +18,7 @@ import {
 	callerRulingResponseSchema,
 	implLeadReviewRequestSchema,
 	storyLeadFinalPackageSchema,
+	storyOrchestrateValidateResultSchema,
 	storyOrchestrateResumeResultSchema,
 	storyOrchestrateRunResultSchema,
 	storyOrchestrateStatusResultSchema,
@@ -74,6 +76,10 @@ export interface StoryOrchestrateStatusInput extends OperationInputBase {
 	storyRunId?: string;
 }
 
+export interface StoryOrchestrateValidateInput extends OperationInputBase {
+	storyId: string;
+}
+
 export const storyOrchestrateRunInputSchema = operationInputBaseSchema
 	.extend({
 		storyId: z.string().min(1),
@@ -95,6 +101,11 @@ export const storyOrchestrateStatusInputSchema =
 		storyRunId: z.string().min(1).optional(),
 	});
 
+export const storyOrchestrateValidateInputSchema =
+	operationInputBaseSchema.extend({
+		storyId: z.string().min(1),
+	});
+
 export {
 	attachedProgressEventSchema,
 	callerHarnessSchema,
@@ -102,6 +113,7 @@ export {
 	callerRulingResponseSchema,
 	implLeadReviewRequestSchema,
 	storyLeadFinalPackageSchema,
+	storyOrchestrateValidateResultSchema,
 	storyOrchestrateResumeResultSchema,
 	storyOrchestrateRunResultSchema,
 	storyOrchestrateStatusResultSchema,
@@ -113,6 +125,8 @@ export type CallerRulingRequest = CoreCallerRulingRequest;
 export type CallerRulingResponse = CoreCallerRulingResponse;
 export type StoryLeadFinalPackage = CoreStoryLeadFinalPackage;
 export type StoryRunCurrentSnapshot = CoreStoryRunCurrentSnapshot;
+export type StoryOrchestrateValidateResult =
+	CoreStoryOrchestrateValidateResult;
 export type StoryOrchestrateRunResult = CoreStoryOrchestrateRunResult;
 export type StoryOrchestrateResumeResult = CoreStoryOrchestrateResumeResult;
 export type StoryOrchestrateStatusResult = CoreStoryOrchestrateStatusResult;

@@ -76,14 +76,14 @@ describe("prompt asset content contracts", () => {
 		);
 	});
 
-	test("TC-8.1c epic verifier prompt contains cross-story and production-path mock or shim audit expectations", () => {
+	test("TC-8.1c epic verifier prompt contains cross-story and production-path audit expectations", () => {
 		const assets = getEmbeddedPromptAssets();
 		const prompt = assets.base["epic-verifier"];
 
 		expect(prompt).toContain("Cross-Story Checks");
 		expect(prompt).toContain("Architecture Consistency");
 		expect(prompt).toContain("whole codebase");
-		expect(prompt).toContain("production-path mock or shim audit");
+		expect(prompt).toContain("Production Path Audit");
 	});
 
 	test("TC-8.3a epic synthesizer prompt distinguishes confirmed issues from disputed or unconfirmed issues", () => {
@@ -119,7 +119,7 @@ describe("prompt asset content contracts", () => {
 			"provided story, tech-design, and test-plan handoff",
 		);
 		expect(assets.snippets["self-review-pass-3"]).toContain(
-			"production-path shim, placeholder, or handoff obligation gap",
+			"production-path gap, placeholder, or handoff obligation gap",
 		);
 	});
 });

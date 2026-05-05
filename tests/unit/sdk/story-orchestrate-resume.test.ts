@@ -71,7 +71,7 @@ describe("story-orchestrate resume sdk operation", () => {
 				specDeviations: [],
 				assumedRisks: [],
 				scopeChanges: [],
-				shimMockFallbackDecisions: [],
+				productionPathDecisionItems: [],
 			},
 			diffReview: {
 				changedFiles: [],

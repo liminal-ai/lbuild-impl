@@ -14,7 +14,7 @@ export const authorityBoundaryDecisionTypes = [
 	"spec-ambiguity",
 	"spec-deviation",
 	"accepted-risk",
-	"shim-mock-fallback",
+	"production-path",
 	"gate-change",
 	"provider-failure",
 	"repeated-failure",

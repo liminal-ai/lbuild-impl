@@ -36,7 +36,7 @@ interface EpicVerifierPayload {
 	crossStoryFindings: string[];
 	architectureFindings: string[];
 	epicCoverageAssessment: string[];
-	mockOrShimAuditFindings: string[];
+	productionPathFindings: string[];
 	blockingFindings: VerifierFindingPayload[];
 	nonBlockingFindings: VerifierFindingPayload[];
 	unresolvedItems: string[];
@@ -91,7 +91,7 @@ function basePayload(
 		epicCoverageAssessment: [
 			"AC-7.1 through AC-8.4 were reviewed against the whole implementation set.",
 		],
-		mockOrShimAuditFindings: [
+		productionPathFindings: [
 			"No inappropriate mocks, shims, placeholders, or fake adapters remain on production paths.",
 		],
 		blockingFindings: [],
@@ -109,8 +109,8 @@ function basePayload(
 			overrides.architectureFindings ?? payload.architectureFindings,
 		epicCoverageAssessment:
 			overrides.epicCoverageAssessment ?? payload.epicCoverageAssessment,
-		mockOrShimAuditFindings:
-			overrides.mockOrShimAuditFindings ?? payload.mockOrShimAuditFindings,
+		productionPathFindings:
+			overrides.productionPathFindings ?? payload.productionPathFindings,
 		blockingFindings: overrides.blockingFindings ?? payload.blockingFindings,
 		nonBlockingFindings:
 			overrides.nonBlockingFindings ?? payload.nonBlockingFindings,
@@ -189,9 +189,9 @@ test("TC-8.1c launches fresh epic verifiers and returns explicit mock or shim au
 		]),
 	);
 	for (const result of envelope.result.verifierResults as unknown as Array<{
-		mockOrShimAuditFindings: string[];
+		productionPathFindings: string[];
 	}>) {
-		expect(result.mockOrShimAuditFindings).toEqual(
+		expect(result.productionPathFindings).toEqual(
 			expect.arrayContaining([
 				"No inappropriate mocks, shims, placeholders, or fake adapters remain on production paths.",
 			]),

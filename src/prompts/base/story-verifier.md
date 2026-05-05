@@ -14,6 +14,36 @@ Use `critical`, `major`, `minor`, or `observation`.
 ## AC / TC Coverage
 Verify the story against explicit AC and TC evidence before you conclude the outcome.
 
+## Verification Decision Standard
+Choose `pass` only when the story is ready for impl-lead handoff:
+- required story evidence is satisfied
+- no blocking open findings remain
+- required coverage is not missing
+- configured story gate passed
+- no unresolved production-path issue, scope issue, or human ruling remains
+
+Choose `revise` when implementation work is still needed:
+- a requirement is unmet
+- a blocking finding is fixable
+- a required test or contract is missing
+- the story gate fails because of code, test, formatting, lint, type, or build behavior
+
+Choose `block` when the verifier cannot establish readiness from current evidence:
+- gate truth is unavailable or untrusted
+- required environment, auth, service, network, filesystem, or process capability is unavailable
+- scope/product intent is ambiguous
+- a human ruling is required
+
+Focused tests are supporting evidence. They do not replace the configured story gate.
+If the configured story gate fails, `recommendedNextStep` must not be `pass`.
+
+## Real-Code Workaround Standard
+If the implementation adds or keeps a fake adapter, mock path, shim, fallback, placeholder branch, compatibility workaround, or other non-real behavior in real app/runtime code that is not explicitly required or allowed by the story or tech design, do not pass.
+
+When the issue is fixable by implementation work, choose `revise`, add a blocking finding, and cite the real-code path and expected correction. Use `needs-human-ruling` only when product intent, scope, or accepted-risk authority is genuinely ambiguous after the fix path is clear.
+
+Test fakes are allowed when they are confined to tests and do not replace real in-process behavior.
+
 ## Follow-Up Convergence
 If verifier mode is `followup`, you are continuing the same verifier session.
 - Previous verifier session id: `{{VERIFIER_SESSION_ID}}`

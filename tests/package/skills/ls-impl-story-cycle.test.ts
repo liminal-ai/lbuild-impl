@@ -71,6 +71,15 @@ describe("ls-impl story cycle skill docs", () => {
 			"The normal happy path is `story-orchestrate`",
 		);
 		expect(chunk.stdout).toContain(
+			"First run `story-orchestrate validate` for the active story",
+		);
+		expect(chunk.stdout).toContain(
+			"Launch `story-orchestrate run` only after validate returns `ready`.",
+		);
+		expect(chunk.stdout).toContain(
+			"the baseline needed for later acceptance comparison is available",
+		);
+		expect(chunk.stdout).toContain(
 			"the next fresh planner turn should return exactly one bounded action.",
 		);
 		expect(chunk.stdout).toContain("## Local CLI on this branch");
@@ -165,7 +174,7 @@ describe("ls-impl story cycle skill docs", () => {
 		expect(chunk.stdout).toContain("APPDATA");
 		expect(chunk.stdout).toContain("LOCALAPPDATA");
 		expect(chunk.stdout).toContain(
-			"LBUILD_IMPL_CODEX_SANDBOX_MODE=workspace-write",
+			"LBUILD_IMPL_CODEX_SANDBOX_MODE=danger-full-access",
 		);
 		expect(chunk.stdout).toContain("LBUILD_IMPL_CODEX_APPROVAL_POLICY=never");
 		expect(chunk.stdout).toContain(

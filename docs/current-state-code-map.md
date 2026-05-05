@@ -21,7 +21,7 @@ Use this as a guided read of the current implementation.
 
 Story-orchestrate surface:
 
-- `src/cli/commands/story-orchestrate*.ts`: `run`, `resume`, and `status` wrappers.
+- `src/cli/commands/story-orchestrate*.ts`: `run`, `validate`, `resume`, and `status` wrappers.
 
 ## SDK Surface
 

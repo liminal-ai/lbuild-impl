@@ -113,14 +113,16 @@ Write this file at the spec-pack root with the appropriate table's values filled
 
 Provider subprocesses keep the normal narrow allowlist, but Windows needs a few extra OS variables so provider CLIs can find their user profiles, shell shims, and temp directories. Expect `APPDATA`, `LOCALAPPDATA`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`, `COMSPEC`, `PATHEXT`, `SYSTEMROOT`, `WINDIR`, `TEMP`, and `TMP` to stay available when the runtime launches provider children.
 
-For unattended Codex implementation work, set these environment variables before running `story-orchestrate` or the lower-level story commands:
+Codex provider runs default to full local execution access so implementors and verifiers can run normal project gates, including scripts that bind localhost or otherwise need more than read-only review permissions.
+
+To override that default before running `story-orchestrate` or the lower-level story commands, set:
 
 ```bash
-LBUILD_IMPL_CODEX_SANDBOX_MODE=workspace-write
+LBUILD_IMPL_CODEX_SANDBOX_MODE=danger-full-access
 LBUILD_IMPL_CODEX_APPROVAL_POLICY=never
 ```
 
-`workspace-write` is the recommended baseline because implementation needs to edit the repo. `read-only` will block normal story work. Use `danger-full-access` only when the surrounding environment is already externally sandboxed and you explicitly want Codex to bypass the narrower workspace guardrail.
+`danger-full-access` is the current default because implementation and verification both need to execute the configured project gates. `read-only` will block normal story work. `workspace-write` may still block tests that bind localhost or need broader process permissions.
 
 Codex resume does not accept `--output-schema`, so resumed turns rely on the same strict runtime parser instead. If the resumed payload drifts away from the required result contract, the runtime reports that as Codex resume schema drift rather than silently accepting malformed output.
 

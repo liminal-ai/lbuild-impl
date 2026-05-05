@@ -448,7 +448,7 @@ function buildVerifierResult(input: {
 		openFindings: input.payload.openFindings,
 		requirementCoverage: input.payload.requirementCoverage,
 		gatesRun: input.payload.gatesRun,
-		mockOrShimAuditFindings: input.payload.mockOrShimAuditFindings,
+		productionPathFindings: input.payload.productionPathFindings,
 		recommendedNextStep: input.payload.recommendedNextStep,
 		recommendedFixScope: input.payload.recommendedFixScope,
 		openQuestions: input.payload.openQuestions,

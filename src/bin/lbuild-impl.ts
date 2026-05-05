@@ -61,7 +61,7 @@ COMMANDS
   inspect             Read-only spec-pack inspection. Best first command.
   preflight           Validate config, gates, git state, and provider readiness.
 
-  story-orchestrate   Run, resume, or inspect one durable story-lead attempt through the composed story-lead loop.
+  story-orchestrate   Run, resume, validate, or inspect one durable story-lead attempt through the composed story-lead loop.
   story-implement     Lower-level initial implementation pass for one story.
   story-continue      Lower-level retained story implementation follow-up.
   story-self-review   Lower-level retained story self-review pass.

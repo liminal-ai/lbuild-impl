@@ -11,7 +11,7 @@ describe("story-orchestrate help", () => {
 			"3. orchestrate  Run story-orchestrate for the normal one-story execution path.",
 		);
 		expect(run.stdout).toContain(
-			"story-orchestrate   Run, resume, or inspect one durable story-lead attempt through the composed story-lead loop.",
+			"story-orchestrate   Run, resume, validate, or inspect one durable story-lead attempt through the composed story-lead loop.",
 		);
 		expect(run.stdout).toContain(
 			"story-implement     Lower-level initial implementation pass for one story.",
@@ -35,7 +35,19 @@ describe("story-orchestrate help", () => {
 
 		expect(run.exitCode).toBe(0);
 		expect(run.stdout).toContain(
-			"Run, resume, or inspect one story through the composed story-lead loop.",
+			"Run, resume, validate, or inspect one story through the composed story-lead loop.",
+		);
+	});
+
+	test("exposes validate help that describes deterministic readiness checks before run", async () => {
+		const run = await runSourceCli(["story-orchestrate", "validate", "--help"]);
+
+		expect(run.exitCode).toBe(0);
+		expect(run.stdout).toContain(
+			"Validate deterministic story-orchestrate readiness and capture pre-story baseline seed data.",
+		);
+		expect(run.stdout).toContain(
+			"story-orchestrate requires story_lead_provider",
 		);
 	});
 

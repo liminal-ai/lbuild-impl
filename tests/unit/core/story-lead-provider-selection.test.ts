@@ -193,7 +193,7 @@ describe("story-lead provider selection", () => {
 			"-c",
 			"model_reasoning_effort=high",
 		]);
-		expect(invocations[0]?.args).toContain("--output-schema");
+		expect(invocations[0]?.args).not.toContain("--output-schema");
 		expect(invocations[0]?.args).toContain("-o");
 		expect(invocations[0]?.args.join(" ")).toContain(
 			`You are the story lead for \`${storyId}\``,

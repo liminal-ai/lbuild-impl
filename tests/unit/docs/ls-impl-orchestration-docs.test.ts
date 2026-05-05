@@ -103,4 +103,23 @@ describe("ls-impl orchestration docs", () => {
 		);
 		expect(cleanup).toContain("`cleanupHandoff`");
 	});
+
+	test("documents the validate-before-run checkpoint for each story", async () => {
+		const [skillRoot, stageMap, initialization, setup, storyCycle, playbook] =
+			await Promise.all([
+				readDoc("src/skills/ls-impl/SKILL.md"),
+				readDoc("src/skills/ls-impl/onboarding/04-stage-map.md"),
+				readDoc("src/skills/ls-impl/onboarding/05-initialization-overview.md"),
+				readDoc("src/skills/ls-impl/setup/12-run-setup.md"),
+				readDoc("src/skills/ls-impl/phases/20-story-cycle.md"),
+				readDoc("src/skills/ls-impl/references/ls-impl-process-playbook.md"),
+			]);
+
+		expect(skillRoot).toContain("should start with `story-orchestrate validate`");
+		expect(stageMap).toContain("run `story-orchestrate validate`");
+		expect(initialization).toContain("should first pass `story-orchestrate validate`");
+		expect(setup).toContain("each story now starts with `story-orchestrate validate`");
+		expect(storyCycle).toContain("First run `story-orchestrate validate`");
+		expect(playbook).toContain("Before starting a story, run `story-orchestrate validate`");
+	});
 });

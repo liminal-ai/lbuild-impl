@@ -365,7 +365,7 @@ describe("result contracts", () => {
 						result: "not-run",
 					},
 				],
-				mockOrShimAuditFindings: [
+				productionPathFindings: [
 					"The verifier found no fake success path, but it explicitly audited the production adapter path.",
 				],
 				recommendedNextStep: "pass",
@@ -399,7 +399,7 @@ describe("result contracts", () => {
 			recommendedFixScope: "quick-fix",
 			blocking: false,
 		});
-		expect(parsed.result?.mockOrShimAuditFindings[0]).toContain(
+		expect(parsed.result?.productionPathFindings[0]).toContain(
 			"production adapter path",
 		);
 	});
@@ -435,7 +435,7 @@ describe("result contracts", () => {
 					newFindings: [],
 					openFindings: [],
 					gatesRun: [],
-					mockOrShimAuditFindings: [],
+					productionPathFindings: [],
 					recommendedNextStep: "revise",
 					recommendedFixScope: "quick-fix",
 					openQuestions: [],
@@ -501,7 +501,7 @@ describe("result contracts", () => {
 					unverified: ["TC-5.2a"],
 				},
 				gatesRun: [],
-				mockOrShimAuditFindings: [],
+				productionPathFindings: [],
 				recommendedNextStep: "needs-human-ruling",
 				recommendedFixScope: "human-ruling",
 				openQuestions: [],
@@ -622,7 +622,7 @@ describe("result contracts", () => {
 							epicCoverageAssessment: [
 								"AC-7.1 through AC-8.4 were reviewed against the runtime and skill surfaces.",
 							],
-							mockOrShimAuditFindings: [
+							productionPathFindings: [
 								"No inappropriate mocks remain on production paths after the epic cleanup pass.",
 							],
 							blockingFindings: [],
@@ -659,7 +659,7 @@ describe("result contracts", () => {
 			},
 		);
 
-		expect(parsed.result?.verifierResults[0]?.mockOrShimAuditFindings).toEqual(
+		expect(parsed.result?.verifierResults[0]?.productionPathFindings).toEqual(
 			expect.arrayContaining([
 				"No inappropriate mocks remain on production paths after the epic cleanup pass.",
 			]),

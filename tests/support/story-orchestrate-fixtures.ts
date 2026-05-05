@@ -146,7 +146,7 @@ function buildFinalPackage(input: {
 			specDeviations: [],
 			assumedRisks: [],
 			scopeChanges: [],
-			shimMockFallbackDecisions: [],
+			productionPathDecisionItems: [],
 		},
 		diffReview: {
 			changedFiles: [],

@@ -1,6 +1,6 @@
 # Story Cycle
 
-Stage 3 runs once per story in order. The normal happy path is `story-orchestrate`: launch one story, let the runtime drive the bounded child operations, review the final package, then finish impl-lead acceptance yourself. Primitive commands remain available as lower-level building blocks, recovery tools, and direct diagnosis tools when you need them.
+Stage 3 runs once per story in order. The normal happy path is `story-orchestrate`: validate one story, launch it only after validation is ready, let the runtime drive the bounded child operations, review the final package, then finish impl-lead acceptance yourself. Primitive commands remain available as lower-level building blocks, recovery tools, and direct diagnosis tools when you need them.
 
 Treat `story-orchestrate` as a story-lead helper for one story rather than as outer acceptance authority. Story-lead can own the internal story loop and hand back a final package, but impl-lead still reviews that package, finishes the receipt, makes the story commit, and decides whether the story is actually accepted.
 
@@ -79,11 +79,33 @@ When you background any provider-backed CLI call in this phase, keep following i
 
 ## Normal story path
 
-Start normal story work with `story-orchestrate`. The runtime will call lower-level story operations for you one bounded step at a time and persist the durable story-run record between planner turns.
+Start normal story work with `story-orchestrate`. First run `story-orchestrate validate` for the active story so the CLI can confirm that the story is ready to start, the story gates are known, and the baseline needed for later acceptance has been captured. Launch `story-orchestrate run` only after validate returns `ready`. The runtime will then call lower-level story operations for you one bounded step at a time and persist the durable story-run record between planner turns.
 
 For the recommended current story-lead setup, use Codex `gpt-5.5` in `story_lead_provider`. Keep the timeout split explicit in `impl-run.config.json`: `story_lead_planner_ms` covers one fresh planner turn, while `story_orchestrate_ms` covers the full `run` or `resume` invocation.
 
-## 1. Launch story-orchestrate
+## 1. Validate story readiness
+
+```bash
+lbuild-impl story-orchestrate validate --spec-pack-root <path> --story-id <story-id> --json
+```
+
+Use validate as the last checkpoint before provider-backed story work starts. It should confirm:
+
+- the active story id is valid
+- the story is in a clean startable state rather than needing `resume`
+- the resolved config is still acceptable for this run
+- the current story and epic gates are known
+- the baseline needed for later acceptance comparison is available
+
+Route on validate outcome:
+
+- **`ready`** — proceed to `story-orchestrate run`
+- **`needs-user-decision`** — pause and surface the exact ambiguity
+- **`blocked`** — stop and resolve the reported readiness blocker before starting the story
+
+Record validate blockers or warnings in `team-impl-log.md` when they affect the story setup.
+
+## 2. Launch story-orchestrate
 
 ```bash
 lbuild-impl story-orchestrate run --spec-pack-root <path> --story-id <story-id> --json
@@ -103,7 +125,7 @@ Story completion is stricter than a clean terminal status. Before you mark the s
 - `npm run green-verify` passes as the story gate
 - `npm run verify-all` passes as the completion gate that includes integration and runs the real integration suite directly
 
-## 2. Poll status while the attempt is active
+## 3. Poll status while the attempt is active
 
 ```bash
 lbuild-impl story-orchestrate status --spec-pack-root <path> --story-id <story-id> --json
@@ -111,7 +133,7 @@ lbuild-impl story-orchestrate status --spec-pack-root <path> --story-id <story-i
 
 Use `status`, `lifecycleState`, the latest event, and the final package path to decide whether to keep waiting, resume, or move into impl-lead acceptance work.
 
-## 3. Resume or reopen intentionally
+## 4. Resume or reopen intentionally
 
 Resume from the durable story-run record when the story-lead asks for review input or a ruling, or when an interrupted attempt needs to continue from disk:
 
@@ -121,7 +143,7 @@ lbuild-impl story-orchestrate resume --spec-pack-root <path> --story-id <story-i
 
 Use `spec-pack-root + story-id` as the stable recovery key when the story run id is missing. Resume only the smallest missing bounded step that is not already backed by a valid durable artifact.
 
-## 4. Finish impl-lead acceptance yourself
+## 5. Finish impl-lead acceptance yourself
 
 `story-orchestrate` does not accept the story for you. After an `accepted` terminal result:
 

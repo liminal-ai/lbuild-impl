@@ -64,7 +64,7 @@ interface VerifierProviderPayload {
 		unverified: string[];
 	};
 	gatesRun: Array<{ command: string; result: "pass" | "fail" | "not-run" }>;
-	mockOrShimAuditFindings: string[];
+	productionPathFindings: string[];
 	recommendedNextStep: "pass" | "revise" | "block" | "needs-human-ruling";
 	recommendedFixScope:
 		| "same-session-implementor"
@@ -209,7 +209,7 @@ function buildVerifierPayload(
 				result: "not-run",
 			},
 		],
-		mockOrShimAuditFindings: [],
+		productionPathFindings: [],
 		recommendedNextStep: "pass",
 		recommendedFixScope: "same-session-implementor",
 		openQuestions: [],

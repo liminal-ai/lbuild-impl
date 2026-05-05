@@ -23,11 +23,11 @@ describe("cleanup handoff", () => {
 					approvalSource: null,
 				},
 			],
-			shimMockFallbackItems: [
+			productionPathItems: [
 				{
-					description: "Approved compatibility shim remains.",
+					description: "Approved production-path exception remains.",
 					reasoning: "This is accepted risk and belongs in cleanup.",
-					evidence: ["shim.md"],
+					evidence: ["production-path.md"],
 					approvalStatus: "approved",
 					approvalSource: "impl-lead",
 				},

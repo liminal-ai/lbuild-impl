@@ -251,7 +251,7 @@ function buildReadingJourney(input: PromptAssemblyInput): string {
 		return [
 			"Read the epic-level artifacts and the whole codebase before you judge the implementation set.",
 			common,
-			"Check cross-story consistency, architecture alignment, and production-path mock or shim usage before you conclude the outcome.",
+			"Check cross-story consistency, architecture alignment, and non-real production-path usage before you conclude the outcome.",
 		].join("\n");
 	}
 
@@ -295,7 +295,7 @@ function storyLeadActionContractSchema(): string {
 		'{"action":"run-verify","rationale":"...","inputs":{"artifactRefs":["/abs/path/to/verifier.json"],"verifierContinuationRef":"storyVerifier","responseArtifactRef":"/abs/path/to/artifact.json"}}',
 		'{"action":"run-quick-fix","rationale":"...","inputs":{"remediationGoal":"...","workingDirectory":"optional"}}',
 		'{"action":"request-ruling","rationale":"...","inputs":{"id":"...","decisionType":"...","question":"...","defaultRecommendation":"...","evidence":["..."],"allowedResponses":["..."]}}',
-		'{"action":"accept-story","rationale":"...","inputs":{"summary":"...","acceptanceCheckRefs":["..."],"acceptanceChecks":[{"name":"...","status":"pass","evidence":["..."],"reasoning":"..."}],"recommendedImplLeadAction":"accept"},"verification":{"finalVerifierOutcome":"pass","findings":[{"id":"...","status":"fixed","evidence":["..."]}]},"riskAndDeviationReview":{"shimMockFallbackDecisions":[]}}',
+		'{"action":"accept-story","rationale":"...","inputs":{"summary":"...","acceptanceCheckRefs":["..."],"acceptanceChecks":[{"name":"...","status":"pass","evidence":["..."],"reasoning":"..."}],"recommendedImplLeadAction":"accept"},"verification":{"finalVerifierOutcome":"pass","findings":[{"id":"...","status":"fixed","evidence":["..."]}]},"riskAndDeviationReview":{"productionPathDecisionItems":[]}}',
 		'{"action":"block-story","rationale":"...","inputs":{"reason":"...","detail":"optional","evidence":["..."]},"verification":{"finalVerifierOutcome":"block","findings":[{"id":"...","status":"unresolved","evidence":["..."]}]}}',
 	].join("\n");
 }
@@ -371,8 +371,8 @@ function resultContractSchema(input: PromptAssemblyInput): string {
 				'  "gatesRun": [',
 				'    { "command": "string", "result": "pass" | "fail" | "not-run" }',
 				"  ],",
-				'  "mockOrShimAuditFindings": ["string"],',
-				'  "recommendedNextStep": "pass" | "revise" | "block",',
+				'  "productionPathFindings": ["string"],',
+				'  "recommendedNextStep": "pass" | "revise" | "block" | "needs-human-ruling",',
 				'  "recommendedFixScope": "same-session-implementor" | "quick-fix" | "fresh-fix-path" | "human-ruling",',
 				'  "openQuestions": ["string"],',
 				'  "additionalObservations": ["string"]',
@@ -383,6 +383,7 @@ function resultContractSchema(input: PromptAssemblyInput): string {
 				"- Do not include `resultId`, `role`, `provider`, `model`, `sessionId`, `continuation`, `mode`, or `story`; the CLI adds identity fields itself.",
 				"- In initial mode, `priorFindingStatuses` must be empty and all surfaced findings must appear in both `newFindings` and `openFindings`.",
 				"- In follow-up mode, preserve finding ids for carried findings and add new findings only for newly introduced regressions or directly touched-surface issues.",
+				"- If any `priorFindingStatuses[].status` is `needs-human-ruling`, set `recommendedNextStep` to `needs-human-ruling`.",
 			].join("\n");
 		case "epic_verifier":
 			return [
@@ -392,7 +393,7 @@ function resultContractSchema(input: PromptAssemblyInput): string {
 				'  "crossStoryFindings": ["string"],',
 				'  "architectureFindings": ["string"],',
 				'  "epicCoverageAssessment": ["string"],',
-				'  "mockOrShimAuditFindings": ["string"],',
+				'  "productionPathFindings": ["string"],',
 				'  "blockingFindings": [',
 				"    {",
 				'      "id": "string",',

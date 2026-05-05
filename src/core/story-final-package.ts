@@ -36,7 +36,7 @@ function effectiveArtifactProvenance(
 		case "ruling-response":
 			return "caller-input";
 		default:
-			return "fixture/preexisting";
+			return "prior-run";
 	}
 }
 
@@ -69,7 +69,7 @@ function acceptanceChecks(input: {
 	gateRun: { command: string; result: "pass" | "fail" | "not-run" };
 	verification: StoryLeadVerification;
 	scopeChanges: RiskOrDeviationItem[];
-	shimMockFallbackDecisions: RiskOrDeviationItem[];
+	productionPathDecisionItems: RiskOrDeviationItem[];
 	baselineBeforeStory: number | null;
 	baselineAfterStory: number | null;
 	commitReadiness: CommitReadiness;
@@ -84,7 +84,7 @@ function acceptanceChecks(input: {
 			item.approvalStatus === "needs-ruling" ||
 			item.approvalStatus === "rejected",
 	);
-	const shimBlockers = input.shimMockFallbackDecisions.filter(
+	const productionPathBlockers = input.productionPathDecisionItems.filter(
 		(item) =>
 			item.approvalStatus === "needs-ruling" ||
 			item.approvalStatus === "rejected",
@@ -141,15 +141,15 @@ function acceptanceChecks(input: {
 					: "At least one scope change still requires ruling or was rejected.",
 		},
 		{
-			name: "shim-mock-fallback-status",
-			status: shimBlockers.length === 0 ? "pass" : "fail",
-			evidence: input.shimMockFallbackDecisions.flatMap(
+			name: "production-path-status",
+			status: productionPathBlockers.length === 0 ? "pass" : "fail",
+			evidence: input.productionPathDecisionItems.flatMap(
 				(item) => item.evidence,
 			),
 			reasoning:
-				shimBlockers.length === 0
-					? "No shim/mock/fallback decisions require further approval."
-					: "At least one shim/mock/fallback decision still requires approval.",
+				productionPathBlockers.length === 0
+					? "No production-path decisions require further approval."
+					: "At least one production-path decision still requires approval.",
 		},
 		{
 			name: "baseline-status",
@@ -210,19 +210,19 @@ function synthesizeRulingRequest(input: {
 	storyRunId: string;
 	riskAndDeviationReview: StoryLeadFinalPackage["riskAndDeviationReview"];
 }): CallerRulingRequest | null {
-	const shimMockFallbackItems =
-		input.riskAndDeviationReview.shimMockFallbackDecisions.filter(
+	const productionPathDecisionItems =
+		input.riskAndDeviationReview.productionPathDecisionItems.filter(
 			(item) => item.approvalStatus === "needs-ruling",
 		);
-	if (shimMockFallbackItems.length > 0) {
+	if (productionPathDecisionItems.length > 0) {
 		return buildAuthorityBoundaryRulingRequest({
-			id: `${input.storyRunId}-ruling-shim-mock-fallback`,
-			decisionType: "shim-mock-fallback",
+			id: `${input.storyRunId}-ruling-production-path`,
+			decisionType: "production-path",
 			question:
-				"Should impl-lead approve the outstanding production shim/mock/fallback decision before story acceptance?",
+				"Should impl-lead approve the outstanding production-path decision before story acceptance?",
 			defaultRecommendation:
-				"Pause for caller ruling instead of silently treating the production shim/mock/fallback decision as accepted or deferred cleanup debt.",
-			evidence: dedupeEvidence(shimMockFallbackItems),
+				"Pause for caller ruling instead of silently treating the production-path decision as accepted or deferred cleanup debt.",
+			evidence: dedupeEvidence(productionPathDecisionItems),
 			allowedResponses: ["approve", "reject"],
 		});
 	}
@@ -376,7 +376,7 @@ export interface BuildStoryLeadFinalPackageInput {
 		specDeviations?: RiskOrDeviationItem[];
 		assumedRisks?: RiskOrDeviationItem[];
 		scopeChanges?: RiskOrDeviationItem[];
-		shimMockFallbackDecisions?: RiskOrDeviationItem[];
+		productionPathDecisionItems?: RiskOrDeviationItem[];
 	};
 	acceptanceSummary?: StoryLeadAcceptanceSummary;
 	gateRun?: GateRunSummary;
@@ -405,8 +405,8 @@ export function buildStoryLeadFinalPackage(
 		specDeviations: input.riskAndDeviationReview?.specDeviations ?? [],
 		assumedRisks: input.riskAndDeviationReview?.assumedRisks ?? [],
 		scopeChanges: input.riskAndDeviationReview?.scopeChanges ?? [],
-		shimMockFallbackDecisions:
-			input.riskAndDeviationReview?.shimMockFallbackDecisions ?? [],
+		productionPathDecisionItems:
+			input.riskAndDeviationReview?.productionPathDecisionItems ?? [],
 	};
 	const commitReadiness =
 		input.commitReadiness ?? defaultCommitReadiness({ outcome: input.outcome });
@@ -433,8 +433,8 @@ export function buildStoryLeadFinalPackage(
 			gateRun,
 			verification,
 			scopeChanges: riskAndDeviationReview.scopeChanges,
-			shimMockFallbackDecisions:
-				riskAndDeviationReview.shimMockFallbackDecisions,
+			productionPathDecisionItems:
+				riskAndDeviationReview.productionPathDecisionItems,
 			baselineBeforeStory: input.baselineBeforeStory ?? null,
 			baselineAfterStory: input.baselineAfterStory ?? null,
 			commitReadiness,
@@ -470,8 +470,8 @@ export function buildStoryLeadFinalPackage(
 		deferredItems: riskAndDeviationReview.scopeChanges.filter(
 			(item) => item.approvalStatus === "not-required",
 		),
-		shimMockFallbackItems:
-			riskAndDeviationReview.shimMockFallbackDecisions.filter(
+		productionPathItems:
+			riskAndDeviationReview.productionPathDecisionItems.filter(
 				(item) =>
 					item.approvalStatus === "approved" ||
 					item.approvalStatus === "not-required",

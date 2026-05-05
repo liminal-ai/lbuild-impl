@@ -1,7 +1,7 @@
 import { join, resolve } from "node:path";
 import { InvalidSpecPackError } from "../sdk/errors/classes.js";
 import { pathExists } from "./fs-utils.js";
-import { readdirDirents } from "./runtime-deps.js";
+import { readdirDirents, stat } from "./runtime-deps.js";
 import {
 	type StoryRunSelection,
 	storyRunSelectionSchema,
@@ -19,7 +19,7 @@ async function listPrimitiveArtifacts(
 	}
 
 	const entries = await readdirDirents(storyArtifactDir);
-	return entries
+	const candidatePaths = entries
 		.filter(
 			(entry) =>
 				entry.isFile() &&
@@ -30,6 +30,20 @@ async function listPrimitiveArtifacts(
 		)
 		.map((entry) => join(storyArtifactDir, entry.name))
 		.sort((left, right) => left.localeCompare(right));
+
+	const durablePaths: string[] = [];
+	for (const path of candidatePaths) {
+		try {
+			const fileStat = await stat(path);
+			if (fileStat.size > 0) {
+				durablePaths.push(path);
+			}
+		} catch {
+			continue;
+		}
+	}
+
+	return durablePaths;
 }
 
 export async function discoverStoryRunState(input: {
