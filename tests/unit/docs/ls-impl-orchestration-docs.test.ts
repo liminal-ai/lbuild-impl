@@ -101,7 +101,9 @@ describe("ls-impl orchestration docs", () => {
 		expect(storyCycle).toContain(
 			"keep them explicit in the story receipt so impl-lead can decide later whether they belong in epic closeout discussion, backlog, or a future story",
 		);
-		expect(cleanup).toContain("Compile the fix batch from the specific current epic-review findings");
+		expect(cleanup).toContain(
+			"Compile the fix batch from the specific current epic-review findings",
+		);
 	});
 
 	test("documents the validate-before-run checkpoint for each story", async () => {
