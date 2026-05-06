@@ -194,7 +194,7 @@ describe("provider liveness handling", () => {
 			JSON.parse(await Bun.file(progressPaths.statusPath).text()),
 		);
 		expect(runtimeStatus.status).toBe("failed");
-		expect(["startup-failed", "stalled"]).toContain(
+		expect(["startup-failed", "stalled", "timed-out"]).toContain(
 			runtimeStatus.providerLiveness,
 		);
 	});

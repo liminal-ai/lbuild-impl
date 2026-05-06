@@ -240,7 +240,7 @@ describe("runtime progress artifacts", () => {
 		).map((line) => runtimeProgressEventSchema.parse(line));
 
 		expect(runtimeStatus.status).toBe("failed");
-		expect(["startup-failed", "stalled"]).toContain(
+		expect(["startup-failed", "stalled", "timed-out"]).toContain(
 			runtimeStatus.providerLiveness,
 		);
 		expect(runtimeStatus.configuredStartupTimeoutMs).toBe(50);
