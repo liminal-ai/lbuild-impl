@@ -5,6 +5,10 @@ import {
 	createStoryOrchestrateSpecPack,
 	seedStoryRunAttempt,
 } from "../../support/story-orchestrate-fixtures";
+import {
+	createTempDir,
+	writeFakeProviderExecutable,
+} from "../../support/test-helpers";
 
 describe("story-orchestrate validate sdk operation", () => {
 	test("returns ready validation with a captured baseline seed when the story is startable", async () => {
@@ -14,10 +18,29 @@ describe("story-orchestrate validate sdk operation", () => {
 				includeStoryLead: true,
 			},
 		);
+		const providerBinDir = await createTempDir(
+			"story-orchestrate-sdk-validate-ready-provider",
+		);
+		const claudeProvider = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "claude",
+			version: "2.1.128 (Claude Code)",
+			authStdout: "authenticated",
+		});
+		const codexProvider = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			version: "codex-cli 0.128.0",
+		});
 
 		const envelope = await storyOrchestrateValidate({
 			specPackRoot,
 			storyId,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...claudeProvider.env,
+				...codexProvider.env,
+			},
 		});
 
 		expect(envelope.command).toBe("story-orchestrate validate");
@@ -51,6 +74,20 @@ describe("story-orchestrate validate sdk operation", () => {
 				includeStoryLead: true,
 			},
 		);
+		const providerBinDir = await createTempDir(
+			"story-orchestrate-sdk-validate-resume-provider",
+		);
+		const claudeProvider = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "claude",
+			version: "2.1.128 (Claude Code)",
+			authStdout: "authenticated",
+		});
+		const codexProvider = await writeFakeProviderExecutable({
+			binDir: providerBinDir,
+			provider: "codex",
+			version: "codex-cli 0.128.0",
+		});
 		const attempt = await seedStoryRunAttempt({
 			specPackRoot,
 			storyId,
@@ -60,6 +97,11 @@ describe("story-orchestrate validate sdk operation", () => {
 		const envelope = await storyOrchestrateValidate({
 			specPackRoot,
 			storyId,
+			env: {
+				PATH: `${providerBinDir}:${process.env.PATH ?? ""}`,
+				...claudeProvider.env,
+				...codexProvider.env,
+			},
 		});
 
 		expect(envelope.outcome).toBe("blocked");
