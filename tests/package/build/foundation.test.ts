@@ -133,17 +133,9 @@ describe("foundation", () => {
 		expect(workflow).toContain("npm run test:package");
 	});
 
-	test("integration workflow runs verify-all without a separate integration opt-in variable", async () => {
-		const workflow = await readFile(
-			join(ROOT, ".github", "workflows", "integration.yml"),
-			"utf8",
-		);
-
-		expect(workflow).toContain("workflow_dispatch:");
-		expect(workflow).toContain("schedule:");
-		expect(workflow).toContain("runs-on: blacksmith-2vcpu-ubuntu-2404");
-		expect(workflow).not.toContain("runs-on: ubuntu-latest");
-		expect(workflow).not.toContain("LSPEC_INTEGRATION");
-		expect(workflow).toContain("npm run verify-all");
+	test("no dedicated GitHub Actions integration workflow is shipped", async () => {
+		expect(
+			existsSync(join(ROOT, ".github", "workflows", "integration.yml")),
+		).toBe(false);
 	});
 });

@@ -1,6 +1,6 @@
 # Release Runbook
 
-This runbook covers maintainer-owned release work for `lbuild-impl`: configure npm, keep release markers in sync, produce fresh gorilla evidence, rehearse the publish workflow, tag the live release, and verify the published artifact.
+This runbook covers maintainer-owned release work for `lbuild-impl`: configure npm, keep release markers in sync, run the local release gates, produce fresh gorilla evidence, rehearse the publish workflow, tag the live release, and verify the published artifact.
 
 ## Current release baseline
 
@@ -9,7 +9,7 @@ Current package: `lbuild-impl@0.3.0`
 Release infrastructure:
 
 - Node 24.
-- Blacksmith runner label `blacksmith-2vcpu-ubuntu-2404` for CI, gorilla evidence, and integration gates.
+- Blacksmith runner label `blacksmith-2vcpu-ubuntu-2404` for CI and gorilla evidence gates.
 - GitHub-hosted `ubuntu-latest` for the final npm publish job.
 - Public unscoped npm package `lbuild-impl`.
 - Live publish uses `npm publish --access public --provenance`.
@@ -21,17 +21,13 @@ Recent known-good runs:
 - Publish workflow for `v0.3.0`: `25197337957`
 - Blacksmith `default-ci` gate: `73880814695`
 - Blacksmith `gorilla-evidence` gate: `73880814701`
-- Blacksmith `integration` gate: `73880962070`
 - GitHub-hosted provenance publish job: `73881155110`
 
 ## npm token configuration
 
 1. Create or refresh an npm automation token with publish rights for `lbuild-impl`.
 2. Add the token to the GitHub repository as the `NPM_TOKEN` Actions secret.
-3. Confirm the release workflow also has the provider secrets used by the real-harness job:
-   - `ANTHROPIC_API_KEY`
-   - `OPENAI_API_KEY`
-4. If the token was rotated, rerun `npm whoami` locally before the next tag so the live workflow is not the first auth check.
+3. If the token was rotated, rerun `npm whoami` locally before the next tag so the live workflow is not the first auth check.
 
 ## Package access setup
 
@@ -71,7 +67,7 @@ Run one rehearsal before every live publish for a version.
 
 1. Update `package.json`, `CHANGELOG.md`, and `VERSION` to the target version.
 2. Run `npm run green-verify`.
-3. Run `npm run verify-all`. If provider credentials, binaries, or required environment are missing locally, treat that as a real release-blocking gate failure rather than a skip condition.
+3. Run `npm run verify-all` locally. Real-provider integration is maintainer-owned and is no longer executed in GitHub Actions.
 4. Run `npm run pack-and-install-smoke`.
 5. Push the release branch or commit SHA you want to rehearse so GitHub Actions can check it out.
 6. Optionally create a local-only `v<version>` tag for shell checks. The workflow does not need the tag to exist on GitHub during rehearsal.
@@ -79,7 +75,7 @@ Run one rehearsal before every live publish for a version.
 8. Set `tag` to `v<version>`.
 9. Set `ref` to the GitHub-visible release branch, SHA, or ref from step 5.
 10. Leave `dry_run` enabled.
-11. Confirm the workflow completes `default-ci`, `integration`, `gorilla-evidence`, and `publish`.
+11. Confirm the workflow completes `default-ci`, `gorilla-evidence`, and `publish`.
 
 Manual `workflow_dispatch` runs validate the requested tag string, check out `ref`, verify the release markers against `tag`, and then run dry-run package validation. If the package version does not yet exist on npm, the final publish step runs `npm publish --access public --provenance --dry-run`. If the package version already exists on npm, the workflow runs `npm pack --dry-run --json` instead so rehearsals remain possible after an earlier publish.
 
@@ -92,7 +88,7 @@ Manual `workflow_dispatch` runs validate the requested tag string, check out `re
    - the fresh gorilla evidence directory committed to `gorilla/evidence/`
 2. Create and push the release tag: `git tag v<version>` then `git push origin v<version>`
 3. Watch the `Publish` workflow for the tagged commit.
-4. Confirm `default-ci`, `integration`, `gorilla-evidence`, and `publish` all complete.
+4. Confirm `default-ci`, `gorilla-evidence`, and `publish` all complete.
 5. If any gate fails, fix the issue on a new commit, regenerate evidence if needed, and create a new tag for the corrected version instead of rerunning an old broken tag.
 
 ## Post-publish verification

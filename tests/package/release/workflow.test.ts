@@ -25,24 +25,22 @@ test("TC-6.5b: default-CI gate blocks publish on failure", async () => {
 	const workflow = await readPublishWorkflow();
 
 	expect(workflow).toContain("default-ci:");
-	expect(workflow).toContain("needs: default-ci");
+	expect(workflow).toContain("needs:");
+	expect(workflow).toContain("- default-ci");
 	expect(workflow).toContain("npm run verify");
 	expect(workflow).toContain("npm run test:package");
 	expect(workflow).toContain("if: $" + "{{ success() }}");
 });
 
-test("TC-6.5c: integration gate blocks publish on failure", async () => {
+test("TC-6.5c: publish no longer depends on a GitHub Actions integration gate", async () => {
 	const workflow = await readPublishWorkflow();
 
-	expect(workflow).toContain("integration:");
-	expect(workflow).toContain('LSPEC_INTEGRATION: "1"');
-	expect(workflow).not.toContain("LSPEC_INTEGRATION_SKIP_AUTH_FAILURES");
 	expect(workflow).toContain(
-		"needs:\n      - default-ci\n      - integration\n      - gorilla-evidence",
+		"needs:\n      - default-ci\n      - gorilla-evidence",
 	);
-	expect(workflow).toContain("Authenticate Codex CLI");
-	expect(workflow).toContain("codex login --with-api-key");
-	expect(workflow).toContain("npm run test:integration");
+	expect(workflow).not.toContain("integration:");
+	expect(workflow).not.toContain("codex login --with-api-key");
+	expect(workflow).not.toContain("npm run test:integration");
 });
 
 test("workflow_dispatch checks out a GitHub-visible ref and validates release tag input", async () => {
@@ -94,7 +92,7 @@ test("workflow YAML remains release-ready", async () => {
 		fileName.endsWith(".yml"),
 	);
 
-	expect(workflowFiles.length).toBeGreaterThanOrEqual(3);
+	expect(workflowFiles.length).toBeGreaterThanOrEqual(2);
 
 	for (const fileName of workflowFiles) {
 		const workflow = await readFile(join(workflowsDir, fileName), "utf8");

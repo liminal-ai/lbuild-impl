@@ -49,22 +49,20 @@ Current provider binaries:
 - Claude Code: `claude`
 - Codex: `codex`
 
-Provider checks and adapters return structured runtime results. The real-provider integration gate installs the provider CLIs in GitHub Actions, authenticates Codex with `OPENAI_API_KEY`, and exercises the integration test suite directly through `npm run verify-all`. If provider binaries, auth, or required environment are missing when integration is invoked, the suite fails loudly instead of skipping.
+Provider checks and adapters return structured runtime results. Real-provider integration is maintainer-owned and exercised locally through `npm run test:integration` or `npm run verify-all`. If provider binaries, auth, or required environment are missing when integration is invoked, the suite fails loudly instead of skipping.
 
 ## Release Automation
 
 Active workflows:
 
 - `.github/workflows/ci.yml`: push and pull request CI.
-- `.github/workflows/integration.yml`: manual and weekly real-provider integration.
 - `.github/workflows/publish.yml`: tag-push publish and manual dry-run rehearsal.
 
-CI, gorilla evidence, and integration gates run on `blacksmith-2vcpu-ubuntu-2404`. The final npm publish job runs on `ubuntu-latest` because npm provenance currently requires a GitHub-hosted runner.
+CI and gorilla evidence gates run on `blacksmith-2vcpu-ubuntu-2404`. The final npm publish job runs on `ubuntu-latest` because npm provenance currently requires a GitHub-hosted runner.
 
-The publish workflow has four jobs:
+The publish workflow has three jobs:
 
 - `default-ci`: validates manual inputs, installs dependencies, runs `npm run verify`, and runs `npm run test:package`.
-- `integration`: installs/authenticates real provider CLIs and runs `npm run test:integration`.
 - `gorilla-evidence`: validates committed gorilla evidence freshness and report shape.
 - `publish`: builds on a GitHub-hosted runner, verifies version markers, and either publishes live with npm provenance on tag push or performs manual dry-run validation.
 

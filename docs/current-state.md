@@ -8,14 +8,13 @@ This is a Config A compact current-state baseline. The repository is small enoug
 
 `lbuild-impl` is a standalone Node 24+ npm package that exposes the Liminal Build implementation runtime as both a CLI and SDK. The current release marker is `lbuild-impl@0.3.0`.
 
-The package is no longer just an epic artifact. It has a tested distribution surface, real-provider integration gates, committed gorilla release evidence, and a live publish workflow.
+The package is no longer just an epic artifact. It has a tested distribution surface, committed gorilla release evidence, and a live publish workflow. Real-provider integration remains a maintainer-owned local gate instead of a GitHub Actions gate.
 
 Recent release evidence:
 
 - Live `v0.3.0` Publish workflow succeeded in run `25197337957`.
 - Blacksmith `default-ci` gate succeeded in job `73880814695`.
 - Blacksmith `gorilla-evidence` gate succeeded in job `73880814701`.
-- Blacksmith `integration` gate succeeded in job `73880962070`.
 - GitHub-hosted final publish job succeeded in job `73881155110` with npm provenance.
 
 ## Functional Baseline
@@ -45,7 +44,7 @@ The `skill` command is the exception to the envelope contract: it is a model-fac
 
 The implementation runtime writes durable artifacts under the spec pack. `inspect` is intentionally read-only. Mutating operations reserve artifact paths, write through atomic helpers, and preserve continuation/progress information where the operation supports it.
 
-Provider-backed operations support Claude Code and Codex through provider adapters. Primitive commands and `story-orchestrate` emit caller-facing heartbeat summaries on `stderr` while work is active, without changing the exact final JSON envelope on `stdout`. Real-provider integration runs are invoked through `npm run test:integration` and `npm run verify-all`; when provider binaries, auth, or required environment are missing, the integration suite fails loudly instead of skipping internally.
+Provider-backed operations support Claude Code and Codex through provider adapters. Primitive commands and `story-orchestrate` emit caller-facing heartbeat summaries on `stderr` while work is active, without changing the exact final JSON envelope on `stdout`. Real-provider integration runs are maintainer-owned and invoked locally through `npm run test:integration` and `npm run verify-all`; when provider binaries, auth, or required environment are missing, the integration suite fails loudly instead of skipping internally.
 
 ## Release Baseline
 
@@ -56,7 +55,7 @@ Release automation uses:
 - Node 24.
 - Blacksmith runner label `blacksmith-2vcpu-ubuntu-2404` for CI, gorilla evidence, and integration gates.
 - Default CI gate: `npm run verify` plus `npm run test:package`.
-- Real-provider gate: `npm run test:integration`.
+- Real-provider gate: maintainer-run `npm run test:integration`.
 - Gorilla evidence gate: `scripts/check-release-evidence.ts`.
 - Version sync gate: `scripts/check-release-version-sync.ts`.
 - Final npm publish on a GitHub-hosted runner with `npm publish --access public --provenance`.
@@ -77,7 +76,7 @@ Common gates:
 - `npm run verify`: format check, lint, typecheck, captured baseline guard, and unit tests.
 - `npm run test:package`: package/release tests.
 - `npm run test:integration`: real-provider integration tests.
-- `npm run verify-all`: default, package, and integration gates. This is the deep story-completion and epic-closeout gate.
+- `npm run verify-all`: default, package, and integration gates. This is the deep local story-completion and epic-closeout gate.
 - `npm run pack-and-install-smoke`: local package install smoke.
 
 ## Read Path
