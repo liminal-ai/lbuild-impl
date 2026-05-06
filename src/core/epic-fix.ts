@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
-import type { z } from "zod";
+import { z } from "zod";
 
 import {
 	type CallerHarnessConfigRecord,
@@ -25,8 +25,8 @@ import {
 } from "./provider-adapters";
 import {
 	type CliError,
-	type EpicCleanupResult,
-	epicCleanupResultSchema,
+	type EpicFixResult,
+	providerIdSchema,
 } from "./result-contracts";
 import {
 	type RuntimeProgressPaths,
@@ -34,25 +34,38 @@ import {
 } from "./runtime-progress";
 import { inspectSpecPack } from "./spec-pack";
 
-export const epicCleanupProviderPayloadSchema = epicCleanupResultSchema
-	.omit({
-		resultId: true,
+const gateRunSchema = z
+	.object({
+		command: z.string().min(1),
+		result: z.enum(["pass", "fail", "not-run"]),
 	})
 	.strict();
 
-type ProviderPayload = z.infer<typeof epicCleanupProviderPayloadSchema>;
+export const epicFixProviderPayloadSchema = z
+	.object({
+		outcome: z.enum(["cleaned", "needs-more-fix", "blocked"]),
+		fixBatchPath: z.string().min(1),
+		filesChanged: z.array(z.string().min(1)),
+		changeSummary: z.string().min(1),
+		gatesRun: z.array(gateRunSchema),
+		unresolvedConcerns: z.array(z.string()),
+		recommendedNextStep: z.string().min(1),
+	})
+	.strict();
 
-export interface EpicCleanupWorkflowResult {
-	outcome: "cleaned" | "needs-more-cleanup" | "blocked";
-	result?: EpicCleanupResult;
+type ProviderPayload = z.infer<typeof epicFixProviderPayloadSchema>;
+
+export interface EpicFixWorkflowResult {
+	outcome: "cleaned" | "needs-more-fix" | "blocked";
+	result?: EpicFixResult;
 	errors: CliError[];
 	warnings: string[];
 }
 
-interface PreparedCleanupContext {
+interface PreparedFixContext {
 	specPackRoot: string;
-	cleanupBatchPath: string;
-	cleanupBatchContent: string;
+	fixBatchPath: string;
+	fixBatchContent: string;
 	provider: ProviderName;
 	model: string;
 	reasoningEffort: string;
@@ -92,6 +105,14 @@ function executionFailureError(input: {
 	stderr: string;
 	errorCode?: string;
 }): CliError {
+	if (input.errorCode === "CONTINUATION_HANDLE_INVALID") {
+		return blockedError(
+			"CONTINUATION_HANDLE_INVALID",
+			`Continuation handle is invalid for ${input.provider}.`,
+			input.stderr,
+		);
+	}
+
 	if (input.errorCode === "INVALID_OUTPUT_SCHEMA") {
 		return blockedError(
 			"PROVIDER_OUTPUT_INVALID",
@@ -134,31 +155,31 @@ function executionFailureError(input: {
 	);
 }
 
-async function prepareCleanupContext(input: {
+async function prepareFixContext(input: {
 	specPackRoot: string;
-	cleanupBatchPath: string;
+	fixBatchPath: string;
 	configPath?: string;
-}): Promise<PreparedCleanupContext | { errors: CliError[] }> {
+}): Promise<PreparedFixContext | { errors: CliError[] }> {
 	const inspection = await inspectSpecPack(input.specPackRoot);
 	if (inspection.status !== "ready") {
 		return {
 			errors: [
 				blockedError(
 					"INVALID_SPEC_PACK",
-					"Spec-pack inspection must be ready before epic cleanup can start.",
+					"Spec-pack inspection must be ready before epic fix can start.",
 					inspection.blockers.join("; ") || inspection.notes.join("; "),
 				),
 			],
 		};
 	}
 
-	const cleanupBatchPath = resolve(input.cleanupBatchPath);
-	if (!(await pathExists(cleanupBatchPath))) {
+	const fixBatchPath = resolve(input.fixBatchPath);
+	if (!(await pathExists(fixBatchPath))) {
 		return {
 			errors: [
 				blockedError(
 					"INVALID_SPEC_PACK",
-					`Cleanup batch artifact was not found: ${cleanupBatchPath}`,
+					`Fix batch artifact was not found: ${fixBatchPath}`,
 				),
 			],
 		};
@@ -179,7 +200,7 @@ async function prepareCleanupContext(input: {
 				: [
 						blockedError(
 							"VERIFICATION_GATE_UNRESOLVED",
-							"Verification gates must be resolved before epic cleanup can start.",
+							"Verification gates must be resolved before epic fix can start.",
 						),
 					],
 		};
@@ -187,8 +208,8 @@ async function prepareCleanupContext(input: {
 
 	return {
 		specPackRoot: inspection.specPackRoot,
-		cleanupBatchPath,
-		cleanupBatchContent: await readTextFile(cleanupBatchPath),
+		fixBatchPath,
+		fixBatchContent: await readTextFile(fixBatchPath),
 		provider: providerForHarness(config.quick_fixer.secondary_harness),
 		model: config.quick_fixer.model,
 		reasoningEffort: config.quick_fixer.reasoning_effort,
@@ -197,46 +218,58 @@ async function prepareCleanupContext(input: {
 			epic: gateResolution.verificationGates.epicGate,
 		},
 		providerCwd: await resolveProviderCwd(inspection.specPackRoot),
-		timeoutMs: resolveRunTimeouts(config).epic_cleanup_ms,
+		timeoutMs: resolveRunTimeouts(config).epic_fixer_ms,
 		startupTimeoutMs: resolveRunTimeouts(config).provider_startup_timeout_ms,
-		silenceTimeoutMs:
-			resolveRunTimeouts(config).epic_cleanup_silence_timeout_ms,
+		silenceTimeoutMs: resolveRunTimeouts(config).epic_fixer_silence_timeout_ms,
 		callerHarnessConfig: config.caller_harness,
 	};
 }
 
-function hasApprovedCleanupItems(content: string): boolean {
+function hasApprovedFixItems(content: string): boolean {
 	return /^\s*[-*]\s+APPROVED\b/im.test(content);
 }
 
-function buildCleanupPrompt(context: PreparedCleanupContext): string {
+function buildFixPrompt(context: PreparedFixContext): string {
 	return [
-		"# Epic Cleanup",
+		"# Epic Fix",
 		"",
-		"Apply only the approved cleanup items from the curated cleanup batch.",
+		"Apply only the approved fix items from the curated fix batch.",
 		"Do not choose a different workflow, widen the scope, or decide whether the epic can close.",
-		"Use the cleanup batch as the source of truth for this pass.",
+		"Use the fix batch as the source of truth for this pass.",
 		"",
-		`Cleanup batch path: ${context.cleanupBatchPath}`,
+		`Fix batch path: ${context.fixBatchPath}`,
 		`Story gate command: ${context.gateCommands.story}`,
 		`Epic gate command: ${context.gateCommands.epic}`,
 		"",
-		"## Cleanup Batch",
-		context.cleanupBatchContent.trim(),
+		"## Fix Batch",
+		context.fixBatchContent.trim(),
 		"",
 		"## Output Contract",
-		"Return exactly one JSON object with: outcome, cleanupBatchPath, filesChanged, changeSummary, gatesRun, unresolvedConcerns, recommendedNextStep.",
+		"Return exactly one JSON object with: outcome, fixBatchPath, filesChanged, changeSummary, gatesRun, unresolvedConcerns, recommendedNextStep.",
 	].join("\n");
 }
 
-function buildCleanupResult(input: {
-	cleanupBatchPath: string;
+function buildFixResult(input: {
+	provider: ProviderName;
+	model: string;
+	sessionId: string;
+	mode: "initial" | "followup";
+	fixBatchPath: string;
 	payload: ProviderPayload;
-}): EpicCleanupResult {
+}): EpicFixResult {
 	return {
 		resultId: randomUUID(),
+		provider: input.provider,
+		model: input.model,
+		sessionId: input.sessionId,
+		continuation: {
+			provider: input.provider,
+			sessionId: input.sessionId,
+			operation: "epic-fix",
+		},
+		mode: input.mode,
 		outcome: input.payload.outcome,
-		cleanupBatchPath: input.cleanupBatchPath,
+		fixBatchPath: input.fixBatchPath,
 		filesChanged: input.payload.filesChanged,
 		changeSummary: input.payload.changeSummary,
 		gatesRun: input.payload.gatesRun,
@@ -245,9 +278,11 @@ function buildCleanupResult(input: {
 	};
 }
 
-export async function runEpicCleanup(input: {
+export async function runEpicFix(input: {
 	specPackRoot: string;
-	cleanupBatchPath: string;
+	fixBatchPath: string;
+	provider?: string;
+	sessionId?: string;
 	configPath?: string;
 	env?: Record<string, string | undefined>;
 	artifactPath?: string;
@@ -257,8 +292,27 @@ export async function runEpicCleanup(input: {
 	heartbeatCadenceMinutes?: number;
 	disableHeartbeats?: boolean;
 	progressListener?: (event: AttachedProgressEvent) => void;
-}): Promise<EpicCleanupWorkflowResult> {
-	const context = await prepareCleanupContext(input);
+}): Promise<EpicFixWorkflowResult> {
+	const mode =
+		typeof input.provider === "string" || typeof input.sessionId === "string"
+			? "followup"
+			: "initial";
+	const provider =
+		mode === "followup" ? providerIdSchema.safeParse(input.provider) : null;
+	if (mode === "followup" && (!provider?.success || !input.sessionId)) {
+		return {
+			outcome: "blocked",
+			errors: [
+				blockedError(
+					"CONTINUATION_HANDLE_INVALID",
+					"Epic fix follow-up requires --provider and --session-id.",
+				),
+			],
+			warnings: [],
+		};
+	}
+
+	const context = await prepareFixContext(input);
 	if ("errors" in context) {
 		return {
 			outcome: "blocked",
@@ -267,11 +321,14 @@ export async function runEpicCleanup(input: {
 		};
 	}
 
+	const executionProvider = provider?.success
+		? provider.data
+		: context.provider;
 	const progressTracker = input.runtimeProgressPaths
 		? await RuntimeProgressTracker.start({
-				command: "epic-cleanup",
-				phase: "cleanup",
-				provider: context.provider,
+				command: "epic-fix",
+				phase: "fix",
+				provider: executionProvider,
 				cwd: context.providerCwd,
 				timeoutMs: context.timeoutMs,
 				configuredStartupTimeoutMs: context.startupTimeoutMs,
@@ -286,24 +343,33 @@ export async function runEpicCleanup(input: {
 			})
 		: undefined;
 
-	if (!hasApprovedCleanupItems(context.cleanupBatchContent)) {
+	if (!hasApprovedFixItems(context.fixBatchContent)) {
+		const noopSessionId = input.sessionId ?? `noop-${randomUUID()}`;
 		await progressTracker?.markCompleted(
-			"epic-cleanup completed as a no-op because there were no approved cleanup items.",
+			"epic-fix completed as a no-op because there were no approved fix items.",
 		);
 		await progressTracker?.flush();
 		return {
 			outcome: "cleaned",
 			result: {
 				resultId: randomUUID(),
+				provider: provider?.success ? provider.data : context.provider,
+				model: context.model,
+				sessionId: noopSessionId,
+				continuation: {
+					provider: provider?.success ? provider.data : context.provider,
+					sessionId: noopSessionId,
+					operation: "epic-fix",
+				},
+				mode,
 				outcome: "cleaned",
-				cleanupBatchPath: context.cleanupBatchPath,
+				fixBatchPath: context.fixBatchPath,
 				filesChanged: [],
 				changeSummary:
-					"No approved cleanup corrections remained, so the cleanup pass was a no-op.",
+					"No approved fix corrections remained, so the fix pass was a no-op.",
 				gatesRun: [],
 				unresolvedConcerns: [],
-				recommendedNextStep:
-					"Review the cleanup result, then launch epic verification.",
+				recommendedNextStep: "Review the fix result, then launch epic review.",
 			},
 			errors: [],
 			warnings: [],
@@ -312,7 +378,7 @@ export async function runEpicCleanup(input: {
 
 	const heartbeat = progressTracker
 		? createPrimitiveHeartbeatEmitter({
-				command: "epic-cleanup",
+				command: "epic-fix",
 				config: context.callerHarnessConfig,
 				callerHarness: input.callerHarness,
 				heartbeatCadenceMinutes: input.heartbeatCadenceMinutes,
@@ -323,18 +389,19 @@ export async function runEpicCleanup(input: {
 		: null;
 	heartbeat?.start();
 	try {
-		const adapter = createProviderAdapter(context.provider, {
+		const adapter = createProviderAdapter(executionProvider, {
 			env: input.env,
 		});
 		const execution = await adapter.execute({
-			prompt: buildCleanupPrompt(context),
+			prompt: buildFixPrompt(context),
 			cwd: context.providerCwd,
 			model: context.model,
 			reasoningEffort: context.reasoningEffort,
+			resumeSessionId: mode === "followup" ? input.sessionId : undefined,
 			timeoutMs: context.timeoutMs,
 			startupTimeoutMs: context.startupTimeoutMs,
 			silenceTimeoutMs: context.silenceTimeoutMs,
-			resultSchema: epicCleanupProviderPayloadSchema,
+			resultSchema: epicFixProviderPayloadSchema,
 			streamOutputPaths: input.streamOutputPaths,
 			lifecycleCallback: (event: ProviderLifecycleEvent) =>
 				progressTracker?.handleProviderLifecycle(event),
@@ -342,7 +409,7 @@ export async function runEpicCleanup(input: {
 
 		if (execution.exitCode !== 0) {
 			await progressTracker?.markFailed(
-				"epic-cleanup failed during provider execution.",
+				"epic-fix failed during provider execution.",
 				{
 					errorCode: execution.errorCode,
 				},
@@ -352,7 +419,7 @@ export async function runEpicCleanup(input: {
 				outcome: "blocked",
 				errors: [
 					executionFailureError({
-						provider: context.provider,
+						provider: executionProvider,
 						stderr: execution.stderr,
 						errorCode: execution.errorCode,
 					}),
@@ -363,7 +430,7 @@ export async function runEpicCleanup(input: {
 
 		if (execution.parseError || !execution.parsedResult) {
 			await progressTracker?.markFailed(
-				"epic-cleanup produced invalid provider output.",
+				"epic-fix produced invalid provider output.",
 				{
 					parseError: execution.parseError,
 				},
@@ -374,7 +441,7 @@ export async function runEpicCleanup(input: {
 				errors: [
 					blockedError(
 						"PROVIDER_OUTPUT_INVALID",
-						`Provider output was invalid for ${context.provider}.`,
+						`Provider output was invalid for ${executionProvider}.`,
 						execution.parseError,
 					),
 				],
@@ -382,13 +449,35 @@ export async function runEpicCleanup(input: {
 			};
 		}
 
-		const result = buildCleanupResult({
-			cleanupBatchPath: context.cleanupBatchPath,
+		const sessionId = execution.sessionId ?? input.sessionId;
+		if (!sessionId) {
+			await progressTracker?.markFailed(
+				"epic-fix did not return a retained provider session id.",
+			);
+			await progressTracker?.flush();
+			return {
+				outcome: "blocked",
+				errors: [
+					blockedError(
+						"CONTINUATION_HANDLE_INVALID",
+						`Provider '${executionProvider}' did not return a session id for the retained epic-fix session.`,
+					),
+				],
+				warnings: [],
+			};
+		}
+
+		const result = buildFixResult({
+			provider: executionProvider,
+			model: context.model,
+			sessionId,
+			mode,
+			fixBatchPath: context.fixBatchPath,
 			payload: execution.parsedResult,
 		});
 
 		await progressTracker?.markCompleted(
-			`epic-cleanup completed with outcome ${result.outcome}.`,
+			`epic-fix completed with outcome ${result.outcome}.`,
 			{
 				outcome: result.outcome,
 			},

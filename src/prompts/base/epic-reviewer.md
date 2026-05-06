@@ -1,4 +1,4 @@
-# Epic Verifier Base Prompt
+# Epic Reviewer Base Prompt
 
 ## Cross-Story Checks
 Review the implemented epic as a whole codebase rather than as isolated stories.

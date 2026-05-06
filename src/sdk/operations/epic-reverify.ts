@@ -1,9 +1,9 @@
-import { runEpicCleanup } from "../../core/epic-cleanup.js";
-import { epicCleanupResultSchema } from "../../core/result-contracts.js";
+import { runEpicReverify } from "../../core/epic-reverifier.js";
+import { epicReverifyResultSchema } from "../../core/result-contracts.js";
 import {
-	type EpicCleanupInput,
-	type EpicCleanupResult,
-	epicCleanupInputSchema,
+	type EpicReverifyResult,
+	type EpicReverifyInput,
+	epicReverifyInputSchema,
 } from "../contracts/operations.js";
 import {
 	buildUnexpectedEnvelope,
@@ -13,25 +13,43 @@ import {
 	withSdkExecutionContext,
 } from "./shared.js";
 
-export async function epicCleanup(
-	input: EpicCleanupInput,
-): Promise<EpicCleanupResult> {
-	const parsedInput = parseSdkInput(epicCleanupInputSchema, input);
+export async function epicReverify(
+	input: EpicReverifyInput,
+): Promise<EpicReverifyResult> {
+	const parsedInput = parseSdkInput(epicReverifyInputSchema, input);
 
 	return await withSdkExecutionContext(parsedInput, async () => {
 		const startedAt = new Date().toISOString();
 		const artifactPath = await resolveOperationArtifactPath({
-			command: "epic-cleanup",
+			command: "epic-reverify",
 			specPackRoot: parsedInput.specPackRoot,
 			artifactPath: parsedInput.artifactPath,
-			group: "cleanup",
-			fileName: "cleanup-result",
+			group: "epic",
+			fileName: "epic-reverify",
 		});
 
+		if (parsedInput.reviewReportPaths.length === 0) {
+			return await finalizeEnvelope({
+				command: "epic-reverify",
+				artifactPath,
+				startedAt,
+				outcome: "error",
+				resultSchema: epicReverifyResultSchema,
+				errors: [
+					{
+						code: "INVALID_INPUT",
+						message: "Provide at least one review report path.",
+					},
+				],
+			});
+		}
+
 		try {
-			const outcome = await runEpicCleanup({
+			const outcome = await runEpicReverify({
 				specPackRoot: parsedInput.specPackRoot,
-				cleanupBatchPath: parsedInput.cleanupBatchPath,
+				reviewReportPaths: parsedInput.reviewReportPaths,
+				provider: parsedInput.provider,
+				sessionId: parsedInput.sessionId,
 				configPath: parsedInput.configPath,
 				env: parsedInput.env,
 				artifactPath,
@@ -43,18 +61,18 @@ export async function epicCleanup(
 				progressListener: parsedInput.progressListener,
 			});
 			return await finalizeEnvelope({
-				command: "epic-cleanup",
+				command: "epic-reverify",
 				artifactPath,
 				startedAt,
 				outcome: outcome.outcome,
-				resultSchema: epicCleanupResultSchema,
+				resultSchema: epicReverifyResultSchema,
 				result: outcome.result,
 				errors: outcome.errors,
 				warnings: outcome.warnings,
 			});
 		} catch (error) {
 			const envelope = buildUnexpectedEnvelope({
-				command: "epic-cleanup",
+				command: "epic-reverify",
 				artifactPath,
 				startedAt,
 				error,
@@ -64,7 +82,7 @@ export async function epicCleanup(
 				artifactPath,
 				startedAt,
 				outcome: envelope.outcome,
-				resultSchema: epicCleanupResultSchema,
+				resultSchema: epicReverifyResultSchema,
 				errors: envelope.errors,
 			});
 		}

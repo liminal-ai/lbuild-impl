@@ -64,9 +64,9 @@ Save the stall report to `gorilla/evidence/<YYYY-MM-DD>/codex-stall.md`.
 The release matrix intentionally does not run these broader operations. Run this section only for a full operation coverage pass, not for bounded release evidence. Use implementation-grade configs and record any reports outside the canonical release matrix unless a release lead explicitly asks for them.
 
 - `story-self-review`: after `story-implement` or `story-continue` returns a continuation handle, run `$CLI story-self-review --spec-pack-root "$SPEC" --story-id 03-smoke-continuation --provider <provider> --session-id <sessionId> --passes 1 --config "impl-run.codex.json" --json`
-- `epic-verify`: `$CLI epic-verify --spec-pack-root "$SPEC" --config "impl-run.claude.json" --json`
-- `epic-synthesize`: `$CLI epic-synthesize --spec-pack-root "$SPEC" --verifier-report "$SPEC/seed-verifier-reports/codex-revise.json" --verifier-report "$SPEC/seed-verifier-reports/claude-code-pass.json" --config "impl-run.codex.json" --json`
-- `epic-cleanup`: `$CLI epic-cleanup --spec-pack-root "$SPEC" --cleanup-batch "$SPEC/seed-cleanup-batches/cleanup-batch-01.md" --config "impl-run.codex.json" --json`
+- `epic-review`: `$CLI epic-review --spec-pack-root "$SPEC" --config "impl-run.claude.json" --json`
+- `epic-reverify`: `$CLI epic-reverify --spec-pack-root "$SPEC" --review-report "$SPEC/seed-review-reports/codex-revise.json" --review-report "$SPEC/seed-review-reports/claude-code-pass.json" --config "impl-run.codex.json" --json`
+- `epic-fix`: `$CLI epic-fix --spec-pack-root "$SPEC" --fix-batch "$SPEC/seed-fix-batches/fix-batch-01.md" --config "impl-run.codex.json" --json`
 
 ## Deliberate Drift Self-Test
 Introduce one known parser mismatch, rerun the affected path, confirm the divergence is surfaced, then document the result in `gorilla/self-test-log.md`.

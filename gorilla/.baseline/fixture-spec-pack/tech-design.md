@@ -6,15 +6,15 @@ This fixture exists only for Story 5 gorilla runs. It is intentionally small, bu
 ## Layout
 - `stories/` contains three stories with concrete file targets under `target-codebase/`.
 - `target-codebase/` is a tiny Node project with two verification scripts.
-- `seed-verifier-reports/` provides two pretty-printed JSON verifier artifacts for `epic-synthesize`.
-- `seed-cleanup-batches/` provides one cleanup batch for `epic-cleanup`.
+- `seed-review-reports/` provides two pretty-printed JSON review artifacts for `epic-reverify`.
+- `seed-fix-batches/` provides one epic fix batch for `epic-fix`.
 - `impl-run.*.json` routes provider-backed flows through Claude Code, Codex, or the forced-stall shim.
 
 ## Provider Routing
 | Config | Primary use |
 | --- | --- |
 | `impl-run.claude.json` | Smoke path for `story-implement`, `story-self-review`, and `story-verify` |
-| `impl-run.codex.json` | Resume and epic-synthesis path |
+| `impl-run.codex.json` | Resume and epic-reverify path |
 | `impl-run.stall.json` | Forced stall path using the local `gorilla/shims/codex` shim |
 
 ## Verification Gates
@@ -31,8 +31,8 @@ The spec-pack root `package.json` forwards those scripts into `target-codebase/`
 - `scripts/verify-all.mjs` extends the green gate with README coverage.
 
 ## Seed Artifacts
-- `seed-verifier-reports/claude-code-pass.json`
-- `seed-verifier-reports/codex-revise.json`
-- `seed-cleanup-batches/cleanup-batch-01.md`
+- `seed-review-reports/claude-code-pass.json`
+- `seed-review-reports/codex-revise.json`
+- `seed-fix-batches/epic fix-batch-01.md`
 
-These are intentionally easy to diff and inspect so the gorilla operator can cite them while running `epic-synthesize` and `epic-cleanup`.
+These are intentionally easy to diff and inspect so the gorilla operator can cite them while running `epic-reverify` and `epic-fix`.

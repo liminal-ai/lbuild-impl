@@ -159,7 +159,7 @@ export async function preflight(
 					validatedConfig.quick_fixer,
 					validatedConfig.story_verifier,
 					...validatedConfig.epic_verifiers,
-					validatedConfig.epic_synthesizer,
+					validatedConfig.epic_reverifier,
 				].every(
 					(assignment) =>
 						!assignment || assignment.secondary_harness === "none",

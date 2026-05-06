@@ -76,9 +76,9 @@ describe("prompt asset content contracts", () => {
 		);
 	});
 
-	test("TC-8.1c epic verifier prompt contains cross-story and production-path audit expectations", () => {
+	test("TC-8.1c epic reviewer prompt contains cross-story and production-path audit expectations", () => {
 		const assets = getEmbeddedPromptAssets();
-		const prompt = assets.base["epic-verifier"];
+		const prompt = assets.base["epic-reviewer"];
 
 		expect(prompt).toContain("Cross-Story Checks");
 		expect(prompt).toContain("Architecture Consistency");
@@ -86,9 +86,9 @@ describe("prompt asset content contracts", () => {
 		expect(prompt).toContain("Production Path Audit");
 	});
 
-	test("TC-8.3a epic synthesizer prompt distinguishes confirmed issues from disputed or unconfirmed issues", () => {
+	test("TC-8.3a epic reverifier prompt distinguishes confirmed issues from disputed or unconfirmed issues", () => {
 		const assets = getEmbeddedPromptAssets();
-		const prompt = assets.base["epic-synthesizer"];
+		const prompt = assets.base["epic-reverifier"];
 
 		expect(prompt).toContain("Confirmed Issues");
 		expect(prompt).toContain("Disputed or Unconfirmed Issues");

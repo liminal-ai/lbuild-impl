@@ -439,8 +439,8 @@ describe("prompt assembly", () => {
 			testPlanPath: fixture.testPlanPath,
 			gateCommands: fixture.gateCommands,
 		});
-		const epicSynthesizer = await assemblePrompt({
-			role: "epic_synthesizer",
+		const epicReverifier = await assemblePrompt({
+			role: "epic_reverifier",
 			epicPath: fixture.epicPath,
 			techDesignPath: fixture.techDesignPath,
 			techDesignCompanionPaths: fixture.techDesignCompanionPaths,
@@ -451,7 +451,7 @@ describe("prompt assembly", () => {
 		expect(implementor.prompt).not.toContain(`- Epic: ${fixture.epicPath}`);
 		expect(verifier.prompt).not.toContain(`- Epic: ${fixture.epicPath}`);
 		expect(epicVerifier.prompt).toContain(`- Epic: ${fixture.epicPath}`);
-		expect(epicSynthesizer.prompt).toContain(`- Epic: ${fixture.epicPath}`);
+		expect(epicReverifier.prompt).toContain(`- Epic: ${fixture.epicPath}`);
 	});
 
 	test("TC-3.4c keeps the quick-fix handoff narrow and skips the full story reading journey", async () => {
@@ -576,7 +576,7 @@ describe("prompt assembly", () => {
 		expect(passFour.prompt).toContain("Self-review pass 4");
 		expect(passFive.prompt).toContain("Self-review pass 5");
 		expect(passFour.prompt).toContain(
-			"Self-review pass 3: residual risks, scope edges, and cleanup before handoff.",
+			"Self-review pass 3: residual risks, scope edges, and fix before handoff.",
 		);
 	});
 

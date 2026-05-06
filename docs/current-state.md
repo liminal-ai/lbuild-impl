@@ -32,16 +32,16 @@ Current operations:
 - `story-self-review`
 - `story-verify`
 - `quick-fix`
-- `epic-verify`
-- `epic-synthesize`
-- `epic-cleanup`
+- `epic-review`
+- `epic-reverify`
+- `epic-fix`
 - `skill`
 
 Each operation returns or prints a versioned result envelope. Envelopes carry the command name, status, outcome, error details when applicable, warnings, artifact references, timestamps, and operation-specific data.
 
 The `skill` command is the exception to the envelope contract: it is a model-facing markdown delivery surface for the `ls-impl` orchestration skill. The root load prints authored skill onboarding plus an auto-generated directory, and chunk loads return bounded markdown sections with carry-forward guidance.
 
-`story-orchestrate` adds a durable story-lead surface on top of the primitive operations. It can validate, start, resume, and inspect one story-owned attempt, while impl-lead remains responsible for outer acceptance, log updates, story commits, and cleanup carry-forward. The validate surface is the deterministic pre-run checkpoint: it reuses inspect/preflight/discovery logic, captures a pre-story baseline seed, and surfaces start blockers before expensive provider work begins. When callers pass an explicit unknown story-run id to `resume` or `status`, the operation returns `invalid-story-run-id` instead of silently selecting another attempt. Resume responses that accept a review request or ruling also surface the durable persisted caller-input artifact path in the result.
+`story-orchestrate` adds a durable story-lead surface on top of the primitive operations. It can validate, start, resume, and inspect one story-owned attempt, while impl-lead remains responsible for outer acceptance, log updates, story commits, and fix carry-forward. The validate surface is the deterministic pre-run checkpoint: it reuses inspect/preflight/discovery logic, captures a pre-story baseline seed, and surfaces start blockers before expensive provider work begins. When callers pass an explicit unknown story-run id to `resume` or `status`, the operation returns `invalid-story-run-id` instead of silently selecting another attempt. Resume responses that accept a review request or ruling also surface the durable persisted caller-input artifact path in the result.
 
 The implementation runtime writes durable artifacts under the spec pack. `inspect` is intentionally read-only. Mutating operations reserve artifact paths, write through atomic helpers, and preserve continuation/progress information where the operation supports it.
 

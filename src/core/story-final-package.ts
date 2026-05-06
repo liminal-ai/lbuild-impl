@@ -206,7 +206,7 @@ function dedupeEvidence(items: RiskOrDeviationItem[]): string[] {
 	return [...new Set(items.flatMap((item) => item.evidence))];
 }
 
-function synthesizeRulingRequest(input: {
+function reverifyRulingRequest(input: {
 	storyRunId: string;
 	riskAndDeviationReview: StoryLeadFinalPackage["riskAndDeviationReview"];
 }): CallerRulingRequest | null {
@@ -448,7 +448,7 @@ export function buildStoryLeadFinalPackage(
 	const effectiveRulingRequest =
 		input.rulingRequest ??
 		(input.outcome === "accepted"
-			? synthesizeRulingRequest({
+			? reverifyRulingRequest({
 					storyRunId: input.storyRunId,
 					riskAndDeviationReview,
 				})

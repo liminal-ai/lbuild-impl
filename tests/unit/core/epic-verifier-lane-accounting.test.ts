@@ -12,17 +12,17 @@ import {
 } from "../../../src/core/runtime-progress.js";
 import { createTempDir, ROOT } from "../../support/test-helpers.js";
 
-describe("epic verifier lane accounting", () => {
+describe("epic reviewer lane accounting", () => {
 	test("TC-4.8a reports lane-specific status for quiet, completed, and active verifier lanes", async () => {
 		const artifactPath = join(
-			await createTempDir("epic-verifier-lane-status"),
+			await createTempDir("epic-reviewer-lane-status"),
 			"artifacts",
 			"epic",
-			"001-epic-verifier-batch.json",
+			"001-epic-reviewer-batch.json",
 		);
 		const tracker = await RuntimeProgressTracker.start({
-			command: "epic-verify",
-			phase: "epic-verifier-1",
+			command: "epic-review",
+			phase: "epic-reviewer-1",
 			provider: "codex",
 			cwd: ROOT,
 			timeoutMs: 1_000,
@@ -33,32 +33,32 @@ describe("epic verifier lane accounting", () => {
 			verifiersPlanned: 3,
 			verifierLanes: [
 				{
-					label: "epic-verifier-1",
+					label: "epic-reviewer-1",
 					provider: "codex",
 				},
 				{
-					label: "epic-verifier-2",
+					label: "epic-reviewer-2",
 					provider: "claude-code",
 				},
 				{
-					label: "epic-verifier-3",
+					label: "epic-reviewer-3",
 					provider: "codex",
 				},
 			],
 		});
 
 		await tracker.recordVerifierLaneStarted({
-			label: "epic-verifier-1",
+			label: "epic-reviewer-1",
 			provider: "codex",
-			phase: "epic-verifier-1",
-			summary: "epic-verifier-1 started.",
+			phase: "epic-reviewer-1",
+			summary: "epic-reviewer-1 started.",
 		});
-		tracker.handleVerifierLaneLifecycle("epic-verifier-1", {
+		tracker.handleVerifierLaneLifecycle("epic-reviewer-1", {
 			type: "provider-spawned",
 			pid: 101,
 			timestamp: "2026-05-03T12:00:00.000Z",
 		});
-		tracker.handleVerifierLaneLifecycle("epic-verifier-1", {
+		tracker.handleVerifierLaneLifecycle("epic-reviewer-1", {
 			type: "active-silent",
 			silenceMs: 40,
 			configuredSilenceTimeoutMs: 200,
@@ -67,31 +67,31 @@ describe("epic verifier lane accounting", () => {
 		});
 
 		await tracker.recordVerifierLaneStarted({
-			label: "epic-verifier-2",
+			label: "epic-reviewer-2",
 			provider: "claude-code",
-			phase: "epic-verifier-2",
-			summary: "epic-verifier-2 started.",
+			phase: "epic-reviewer-2",
+			summary: "epic-reviewer-2 started.",
 		});
 		await tracker.recordVerifierLaneCompleted({
-			label: "epic-verifier-2",
+			label: "epic-reviewer-2",
 			provider: "claude-code",
-			phase: "epic-verifier-2",
-			summary: "epic-verifier-2 completed.",
+			phase: "epic-reviewer-2",
+			summary: "epic-reviewer-2 completed.",
 			verifiersCompleted: 1,
 		});
 
 		await tracker.recordVerifierLaneStarted({
-			label: "epic-verifier-3",
+			label: "epic-reviewer-3",
 			provider: "codex",
-			phase: "epic-verifier-3",
-			summary: "epic-verifier-3 started.",
+			phase: "epic-reviewer-3",
+			summary: "epic-reviewer-3 started.",
 		});
-		tracker.handleVerifierLaneLifecycle("epic-verifier-3", {
+		tracker.handleVerifierLaneLifecycle("epic-reviewer-3", {
 			type: "provider-spawned",
 			pid: 303,
 			timestamp: "2026-05-03T12:00:00.000Z",
 		});
-		tracker.handleVerifierLaneLifecycle("epic-verifier-3", {
+		tracker.handleVerifierLaneLifecycle("epic-reviewer-3", {
 			type: "output",
 			stream: "stderr",
 			timestamp: "2026-05-03T12:00:00.080Z",
@@ -104,17 +104,17 @@ describe("epic verifier lane accounting", () => {
 		expect(runtimeStatus.verifierLanes).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					label: "epic-verifier-1",
+					label: "epic-reviewer-1",
 					state: "running",
 					providerLiveness: "active-silent",
 				}),
 				expect.objectContaining({
-					label: "epic-verifier-2",
+					label: "epic-reviewer-2",
 					state: "completed",
 					providerLiveness: "completed",
 				}),
 				expect.objectContaining({
-					label: "epic-verifier-3",
+					label: "epic-reviewer-3",
 					state: "running",
 					providerLiveness: "active-with-output",
 				}),
@@ -124,14 +124,14 @@ describe("epic verifier lane accounting", () => {
 
 	test("TC-4.8b keeps the batch non-terminal while at least one verifier lane is still active", async () => {
 		const artifactPath = join(
-			await createTempDir("epic-verifier-lane-mixed"),
+			await createTempDir("epic-reviewer-lane-mixed"),
 			"artifacts",
 			"epic",
-			"001-epic-verifier-batch.json",
+			"001-epic-reviewer-batch.json",
 		);
 		const tracker = await RuntimeProgressTracker.start({
-			command: "epic-verify",
-			phase: "epic-verifier-1",
+			command: "epic-review",
+			phase: "epic-reviewer-1",
 			provider: "codex",
 			cwd: ROOT,
 			timeoutMs: 1_000,
@@ -142,23 +142,23 @@ describe("epic verifier lane accounting", () => {
 			verifiersPlanned: 2,
 			verifierLanes: [
 				{
-					label: "epic-verifier-1",
+					label: "epic-reviewer-1",
 					provider: "codex",
 				},
 				{
-					label: "epic-verifier-2",
+					label: "epic-reviewer-2",
 					provider: "claude-code",
 				},
 			],
 		});
 
 		await tracker.recordVerifierLaneStarted({
-			label: "epic-verifier-1",
+			label: "epic-reviewer-1",
 			provider: "codex",
-			phase: "epic-verifier-1",
-			summary: "epic-verifier-1 started.",
+			phase: "epic-reviewer-1",
+			summary: "epic-reviewer-1 started.",
 		});
-		tracker.handleVerifierLaneLifecycle("epic-verifier-1", {
+		tracker.handleVerifierLaneLifecycle("epic-reviewer-1", {
 			type: "timeout",
 			elapsedMs: 120,
 			configuredTimeoutMs: 100,
@@ -166,12 +166,12 @@ describe("epic verifier lane accounting", () => {
 		});
 
 		await tracker.recordVerifierLaneStarted({
-			label: "epic-verifier-2",
+			label: "epic-reviewer-2",
 			provider: "claude-code",
-			phase: "epic-verifier-2",
-			summary: "epic-verifier-2 started.",
+			phase: "epic-reviewer-2",
+			summary: "epic-reviewer-2 started.",
 		});
-		tracker.handleVerifierLaneLifecycle("epic-verifier-2", {
+		tracker.handleVerifierLaneLifecycle("epic-reviewer-2", {
 			type: "output",
 			stream: "stdout",
 			timestamp: "2026-05-03T12:00:00.090Z",
@@ -184,12 +184,12 @@ describe("epic verifier lane accounting", () => {
 		expect(runningSnapshot.verifierLanes).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					label: "epic-verifier-1",
+					label: "epic-reviewer-1",
 					state: "failed",
 					providerLiveness: "timed-out",
 				}),
 				expect.objectContaining({
-					label: "epic-verifier-2",
+					label: "epic-reviewer-2",
 					state: "running",
 					providerLiveness: "active-with-output",
 				}),
@@ -197,7 +197,7 @@ describe("epic verifier lane accounting", () => {
 		);
 
 		await tracker.markFailed(
-			"epic-verify failed after terminal lane aggregation.",
+			"epic-review failed after terminal lane aggregation.",
 		);
 		await tracker.flush();
 

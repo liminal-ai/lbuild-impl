@@ -5,8 +5,8 @@ export type BasePromptId =
 	| "story-implementor"
 	| "story-verifier"
 	| "quick-fixer"
-	| "epic-verifier"
-	| "epic-synthesizer";
+	| "epic-reviewer"
+	| "epic-reverifier";
 
 export type SnippetId =
 	| "reading-journey"
@@ -30,8 +30,8 @@ const REQUIRED_BASE_PROMPTS: BasePromptId[] = [
 	"story-implementor",
 	"story-verifier",
 	"quick-fixer",
-	"epic-verifier",
-	"epic-synthesizer",
+	"epic-reviewer",
+	"epic-reverifier",
 ];
 
 const REQUIRED_SNIPPETS: SnippetId[] = [

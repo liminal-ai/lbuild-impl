@@ -26,17 +26,17 @@ import {
 } from "../../core/heartbeat.js";
 import {
 	type ContinuationHandle as CoreContinuationHandle,
-	type EpicCleanupResult as CoreEpicCleanupResult,
-	type EpicSynthesisResult as CoreEpicSynthesisResult,
-	type EpicVerifierBatchResult as CoreEpicVerifyResult,
+	type EpicFixResult as CoreEpicFixResult,
+	type EpicReverifyResult as CoreEpicReverifyResult,
+	type EpicVerifierBatchResult as CoreEpicReviewResult,
 	type InspectResult as CoreInspectPayload,
 	type PreflightResult as CorePreflightPayload,
 	type QuickFixResult as CoreQuickFixPayload,
 	type ImplementorResult as CoreStoryImplementPayload,
 	type StorySelfReviewResult as CoreStorySelfReviewPayload,
 	type StoryVerifierResult as CoreStoryVerifyPayload,
-	epicCleanupResultSchema,
-	epicSynthesisResultSchema,
+	epicFixResultSchema,
+	epicReverifyResultSchema,
 	epicVerifierBatchResultSchema,
 	implementorResultSchema,
 	inspectResultSchema,
@@ -51,8 +51,8 @@ import type { CliResultEnvelope } from "./envelope.js";
 export {
 	attachedProgressEventSchema,
 	callerHarnessSchema,
-	epicCleanupResultSchema,
-	epicSynthesisResultSchema,
+	epicFixResultSchema,
+	epicReverifyResultSchema,
 	epicVerifierBatchResultSchema,
 	implementorResultSchema,
 	inspectResultSchema,
@@ -121,14 +121,18 @@ export interface PreflightInput extends OperationInputBase {
 	epicGate?: string;
 }
 
-export interface EpicSynthesizeInput extends ProviderOperationInputBase {
-	verifierReportPaths: string[];
+export interface EpicReverifyInput extends ProviderOperationInputBase {
+	reviewReportPaths: string[];
+	provider?: ContinuationHandle["provider"];
+	sessionId?: string;
 }
 
-export interface EpicVerifyInput extends ProviderOperationInputBase {}
+export interface EpicReviewInput extends ProviderOperationInputBase {}
 
-export interface EpicCleanupInput extends ProviderOperationInputBase {
-	cleanupBatchPath: string;
+export interface EpicFixInput extends ProviderOperationInputBase {
+	fixBatchPath: string;
+	provider?: ContinuationHandle["provider"];
+	sessionId?: string;
 }
 
 export interface QuickFixInput extends ProviderOperationInputBase {
@@ -228,13 +232,16 @@ export const preflightInputSchema = operationInputBaseSchema.extend({
 	storyGate: z.string().min(1).optional(),
 	epicGate: z.string().min(1).optional(),
 });
-export const epicSynthesizeInputSchema =
-	providerOperationInputBaseSchema.extend({
-		verifierReportPaths: z.array(z.string().min(1)),
-	});
-export const epicVerifyInputSchema = providerOperationInputBaseSchema;
-export const epicCleanupInputSchema = providerOperationInputBaseSchema.extend({
-	cleanupBatchPath: z.string().min(1),
+export const epicReverifyInputSchema = providerOperationInputBaseSchema.extend({
+	reviewReportPaths: z.array(z.string().min(1)),
+	provider: continuationHandleInputSchema.shape.provider.optional(),
+	sessionId: z.string().min(1).optional(),
+});
+export const epicReviewInputSchema = providerOperationInputBaseSchema;
+export const epicFixInputSchema = providerOperationInputBaseSchema.extend({
+	fixBatchPath: z.string().min(1),
+	provider: continuationHandleInputSchema.shape.provider.optional(),
+	sessionId: z.string().min(1).optional(),
 });
 export const quickFixInputSchema = providerOperationInputBaseSchema.extend({
 	request: z.string().min(1),
@@ -270,9 +277,9 @@ export type QuickFixPayload = CoreQuickFixPayload;
 
 export type InspectPayload = CoreInspectPayload;
 export type PreflightPayload = CorePreflightPayload;
-export type EpicSynthesisPayload = CoreEpicSynthesisResult;
-export type EpicVerifyPayload = CoreEpicVerifyResult;
-export type EpicCleanupPayload = CoreEpicCleanupResult;
+export type EpicReverifyPayload = CoreEpicReverifyResult;
+export type EpicReviewPayload = CoreEpicReviewResult;
+export type EpicFixPayload = CoreEpicFixResult;
 export type StoryImplementPayload = CoreStoryImplementPayload;
 export type StoryContinuePayload = CoreStoryImplementPayload;
 export type StorySelfReviewPayload = CoreStorySelfReviewPayload;
@@ -280,9 +287,9 @@ export type StoryVerifyPayload = CoreStoryVerifyPayload;
 
 export type InspectResult = CliResultEnvelope<InspectPayload>;
 export type PreflightResult = CliResultEnvelope<PreflightPayload>;
-export type EpicSynthesisResult = CliResultEnvelope<EpicSynthesisPayload>;
-export type EpicVerifyResult = CliResultEnvelope<EpicVerifyPayload>;
-export type EpicCleanupResult = CliResultEnvelope<EpicCleanupPayload>;
+export type EpicReverifyResult = CliResultEnvelope<EpicReverifyPayload>;
+export type EpicReviewResult = CliResultEnvelope<EpicReviewPayload>;
+export type EpicFixResult = CliResultEnvelope<EpicFixPayload>;
 export type QuickFixResult = CliResultEnvelope<QuickFixPayload>;
 export type StoryImplementResult = CliResultEnvelope<StoryImplementPayload>;
 export type StoryContinueResult = CliResultEnvelope<StoryContinuePayload>;

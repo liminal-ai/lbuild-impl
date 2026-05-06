@@ -3,9 +3,9 @@ import { fileURLToPath } from "node:url";
 
 import { defineCommand, runMain } from "citty";
 
-import epicCleanupCommand from "../cli/commands/epic-cleanup";
-import epicSynthesizeCommand from "../cli/commands/epic-synthesize";
-import epicVerifyCommand from "../cli/commands/epic-verify";
+import epicFixCommand from "../cli/commands/epic-fix";
+import epicReverifyCommand from "../cli/commands/epic-reverify";
+import epicReviewCommand from "../cli/commands/epic-review";
 import inspectCommand from "../cli/commands/inspect";
 import preflightCommand from "../cli/commands/preflight";
 import quickFixCommand from "../cli/commands/quick-fix";
@@ -38,9 +38,9 @@ BASIC PROCESS
   4. recover      Use status/resume and primitive story commands only for lower-level recovery or diagnosis.
   5. verify       Review the final package, then run your story gate and acceptance steps.
   6. fix          Use quick-fix only for bounded lower-level follow-up fixes.
-  7. summarize    Use epic-verify and epic-synthesize to assess epic completion.
+  7. closeout     Use epic-review, epic-fix, and epic-reverify to assess epic completion.
 
-  Repeat steps 3-6 per story. Run cleanup only when batch prepared.
+  Repeat steps 3-6 per story. Run fix only when batch prepared.
 
 SKILL DELIVERY
   skill        Read the CLI-delivered ls-impl orchestration skill in bounded
@@ -68,9 +68,9 @@ COMMANDS
   story-verify        Lower-level start or continue story verification.
 
   quick-fix           Apply one bounded fix from task description.
-  epic-verify         Run epic-level verification.
-  epic-synthesize     Summarize/reconcile epic verifier findings.
-  epic-cleanup        Apply prepared cleanup batch.
+  epic-review         Run fresh epic-level review.
+  epic-reverify       Reverify epic status against prior review findings.
+  epic-fix            Apply prepared epic fix batch.
   skill               Read CLI-delivered skill onboarding/docs.
 
 OUTPUT CONTRACT
@@ -92,7 +92,7 @@ OUTPUT CONTRACT
 SAFETY
   - inspect is read-only.
   - preflight checks readiness before implementation work.
-  - implementation, verification, quick-fix, and cleanup commands may mutate the
+  - implementation, verification, quick-fix, and fix commands may mutate the
     target codebase and write artifacts into the spec pack.
   - Expect a dirty git worktree after mutating commands.
   - Provider-backed commands may call paid/authenticated external CLIs.
@@ -124,9 +124,9 @@ const main = defineCommand({
 	default:
 		"Use `lbuild-impl inspect --spec-pack-root <path> --json` to validate a spec pack.",
 	subCommands: {
-		"epic-cleanup": epicCleanupCommand,
-		"epic-synthesize": epicSynthesizeCommand,
-		"epic-verify": epicVerifyCommand,
+		"epic-fix": epicFixCommand,
+		"epic-reverify": epicReverifyCommand,
+		"epic-review": epicReviewCommand,
 		inspect: inspectCommand,
 		preflight: preflightCommand,
 		"quick-fix": quickFixCommand,

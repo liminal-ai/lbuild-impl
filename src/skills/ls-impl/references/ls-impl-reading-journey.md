@@ -16,7 +16,7 @@ Use `tech-design.md` and companion tech-design files only when the stories and t
 - the resolved spec-pack root
 - the ordered story inventory
 - the test-plan expectations that matter for the story cycle
-- the story and epic verification gates
+- the story gate and epic gate selections
 - any blockers that require a user decision
 - any targeted lookup clarifications taken from `epic.md` or the tech-design set
 - whether public prompt inserts are active

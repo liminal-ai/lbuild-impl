@@ -311,7 +311,7 @@ function requestedSecondaryHarnesses(
 		config.quick_fixer,
 		config.story_verifier,
 		...config.epic_verifiers,
-		config.epic_synthesizer,
+		config.epic_reverifier,
 	]) {
 		if (assignment && assignment.secondary_harness !== "none") {
 			harnesses.add(assignment.secondary_harness);

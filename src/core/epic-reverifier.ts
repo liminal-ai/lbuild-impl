@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
-import type { z } from "zod";
+import { z } from "zod";
 
 import {
 	type CallerHarnessConfigRecord,
@@ -27,11 +27,11 @@ import {
 import {
 	type CliError,
 	cliResultEnvelopeSchema,
-	type EpicSynthesisResult,
+	type EpicReverifyResult,
 	type EpicVerifierResult,
-	epicSynthesisResultSchema,
 	epicVerifierBatchResultSchema,
 	epicVerifierResultSchema,
+	providerIdSchema,
 } from "./result-contracts";
 import {
 	type RuntimeProgressPaths,
@@ -39,20 +39,29 @@ import {
 } from "./runtime-progress";
 import { inspectSpecPack } from "./spec-pack";
 
-export const epicSynthesisProviderPayloadSchema = epicSynthesisResultSchema
-	.omit({
-		resultId: true,
+export const epicReverifyProviderPayloadSchema = z
+	.object({
+		outcome: z.enum([
+			"ready-for-closeout",
+			"needs-fixes",
+			"needs-more-verification",
+			"blocked",
+		]),
+		confirmedIssues: z.array(z.string()),
+		disputedOrUnconfirmedIssues: z.array(z.string()),
+		readinessAssessment: z.string().min(1),
+		recommendedNextStep: z.string().min(1),
 	})
 	.strict();
 
-type ProviderPayload = z.infer<typeof epicSynthesisProviderPayloadSchema>;
+type ProviderPayload = z.infer<typeof epicReverifyProviderPayloadSchema>;
 
-interface PreparedSynthesisContext {
+interface PreparedReverifyContext {
 	specPackRoot: string;
 	provider: ProviderName;
 	model: string;
 	reasoningEffort: string;
-	verifierReportPaths: string[];
+	reviewReportPaths: string[];
 	verifierResults: EpicVerifierResult[];
 	gateCommands: {
 		story: string;
@@ -71,13 +80,13 @@ interface PreparedSynthesisContext {
 	callerHarnessConfig?: CallerHarnessConfigRecord;
 }
 
-export interface EpicSynthesisWorkflowResult {
+export interface EpicReverifyWorkflowResult {
 	outcome:
 		| "ready-for-closeout"
 		| "needs-fixes"
 		| "needs-more-verification"
 		| "blocked";
-	result?: EpicSynthesisResult;
+	result?: EpicReverifyResult;
 	errors: CliError[];
 	warnings: string[];
 }
@@ -107,6 +116,14 @@ function executionFailureError(input: {
 	stderr: string;
 	errorCode?: string;
 }): CliError {
+	if (input.errorCode === "CONTINUATION_HANDLE_INVALID") {
+		return blockedError(
+			"CONTINUATION_HANDLE_INVALID",
+			`Continuation handle is invalid for ${input.provider}.`,
+			input.stderr,
+		);
+	}
+
 	if (input.errorCode === "INVALID_OUTPUT_SCHEMA") {
 		return blockedError(
 			"PROVIDER_OUTPUT_INVALID",
@@ -149,7 +166,7 @@ function executionFailureError(input: {
 	);
 }
 
-function parseVerifierReportContent(
+function parseReviewReportContent(
 	content: string,
 ): EpicVerifierResult[] | undefined {
 	let parsed: unknown;
@@ -179,19 +196,19 @@ function parseVerifierReportContent(
 	return undefined;
 }
 
-async function loadVerifierReports(
-	verifierReportPaths: string[],
+async function loadReviewReports(
+	reviewReportPaths: string[],
 ): Promise<{ results?: EpicVerifierResult[]; errors?: CliError[] }> {
 	const collected: EpicVerifierResult[] = [];
 
-	for (const reportPath of verifierReportPaths) {
+	for (const reportPath of reviewReportPaths) {
 		const resolvedPath = resolve(reportPath);
 		if (!(await pathExists(resolvedPath))) {
 			return {
 				errors: [
 					blockedError(
 						"INVALID_SPEC_PACK",
-						`Verifier report was not found: ${resolvedPath}`,
+						`Review report was not found: ${resolvedPath}`,
 					),
 				],
 			};
@@ -202,7 +219,7 @@ async function loadVerifierReports(
 				errors: [
 					blockedError(
 						"INVALID_SPEC_PACK",
-						`Verifier report is not readable: ${resolvedPath}`,
+						`Review report is not readable: ${resolvedPath}`,
 					),
 				],
 			};
@@ -216,20 +233,20 @@ async function loadVerifierReports(
 				errors: [
 					blockedError(
 						"INVALID_SPEC_PACK",
-						`Verifier report could not be read: ${resolvedPath}`,
+						`Review report could not be read: ${resolvedPath}`,
 						error instanceof Error ? error.message : String(error),
 					),
 				],
 			};
 		}
 
-		const parsed = parseVerifierReportContent(content);
+		const parsed = parseReviewReportContent(content);
 		if (!parsed) {
 			return {
 				errors: [
 					blockedError(
 						"INVALID_SPEC_PACK",
-						`Verifier report was not valid JSON for the epic verifier contract: ${resolvedPath}`,
+						`Review report was not valid JSON for the epic reviewer contract: ${resolvedPath}`,
 					),
 				],
 			};
@@ -243,31 +260,31 @@ async function loadVerifierReports(
 	};
 }
 
-async function prepareSynthesisContext(input: {
+async function prepareReverifyContext(input: {
 	specPackRoot: string;
-	verifierReportPaths: string[];
+	reviewReportPaths: string[];
 	configPath?: string;
-}): Promise<PreparedSynthesisContext | { errors: CliError[] }> {
+}): Promise<PreparedReverifyContext | { errors: CliError[] }> {
 	const inspection = await inspectSpecPack(input.specPackRoot);
 	if (inspection.status !== "ready") {
 		return {
 			errors: [
 				blockedError(
 					"INVALID_SPEC_PACK",
-					"Spec-pack inspection must be ready before epic synthesis can start.",
+					"Spec-pack inspection must be ready before epic reverify can start.",
 					inspection.blockers.join("; ") || inspection.notes.join("; "),
 				),
 			],
 		};
 	}
 
-	const reportResolution = await loadVerifierReports(input.verifierReportPaths);
+	const reportResolution = await loadReviewReports(input.reviewReportPaths);
 	if (reportResolution.errors || !reportResolution.results) {
 		return {
 			errors: reportResolution.errors ?? [
 				blockedError(
 					"INVALID_SPEC_PACK",
-					"Epic synthesis requires at least one verifier report.",
+					"Epic reverify requires at least one review report.",
 				),
 			],
 		};
@@ -288,7 +305,7 @@ async function prepareSynthesisContext(input: {
 				: [
 						blockedError(
 							"VERIFICATION_GATE_UNRESOLVED",
-							"Verification gates must be resolved before epic synthesis can start.",
+							"Verification gates must be resolved before epic reverify can start.",
 						),
 					],
 		};
@@ -296,10 +313,10 @@ async function prepareSynthesisContext(input: {
 
 	return {
 		specPackRoot: inspection.specPackRoot,
-		provider: providerForHarness(config.epic_synthesizer.secondary_harness),
-		model: config.epic_synthesizer.model,
-		reasoningEffort: config.epic_synthesizer.reasoning_effort,
-		verifierReportPaths: input.verifierReportPaths.map((path) => resolve(path)),
+		provider: providerForHarness(config.epic_reverifier.secondary_harness),
+		model: config.epic_reverifier.model,
+		reasoningEffort: config.epic_reverifier.reasoning_effort,
+		reviewReportPaths: input.reviewReportPaths.map((path) => resolve(path)),
 		verifierResults: reportResolution.results,
 		gateCommands: {
 			story: gateResolution.verificationGates.storyGate,
@@ -312,28 +329,45 @@ async function prepareSynthesisContext(input: {
 			testPlanPath: inspection.artifacts.testPlanPath,
 		},
 		providerCwd: await resolveProviderCwd(inspection.specPackRoot),
-		timeoutMs: resolveRunTimeouts(config).epic_synthesizer_ms,
+		timeoutMs: resolveRunTimeouts(config).epic_reverifier_ms,
 		startupTimeoutMs: resolveRunTimeouts(config).provider_startup_timeout_ms,
 		silenceTimeoutMs:
-			resolveRunTimeouts(config).epic_synthesizer_silence_timeout_ms,
+			resolveRunTimeouts(config).epic_reverifier_silence_timeout_ms,
 		callerHarnessConfig: config.caller_harness,
 	};
 }
 
-function buildSynthesisResult(payload: ProviderPayload): EpicSynthesisResult {
+function buildReverifyResult(input: {
+	provider: ProviderName;
+	model: string;
+	sessionId: string;
+	mode: "initial" | "followup";
+	payload: ProviderPayload;
+}): EpicReverifyResult {
 	return {
 		resultId: randomUUID(),
-		outcome: payload.outcome,
-		confirmedIssues: payload.confirmedIssues,
-		disputedOrUnconfirmedIssues: payload.disputedOrUnconfirmedIssues,
-		readinessAssessment: payload.readinessAssessment,
-		recommendedNextStep: payload.recommendedNextStep,
+		provider: input.provider,
+		model: input.model,
+		sessionId: input.sessionId,
+		continuation: {
+			provider: input.provider,
+			sessionId: input.sessionId,
+			operation: "epic-reverify",
+		},
+		mode: input.mode,
+		outcome: input.payload.outcome,
+		confirmedIssues: input.payload.confirmedIssues,
+		disputedOrUnconfirmedIssues: input.payload.disputedOrUnconfirmedIssues,
+		readinessAssessment: input.payload.readinessAssessment,
+		recommendedNextStep: input.payload.recommendedNextStep,
 	};
 }
 
-export async function runEpicSynthesize(input: {
+export async function runEpicReverify(input: {
 	specPackRoot: string;
-	verifierReportPaths: string[];
+	reviewReportPaths: string[];
+	provider?: string;
+	sessionId?: string;
 	configPath?: string;
 	env?: Record<string, string | undefined>;
 	artifactPath?: string;
@@ -343,8 +377,27 @@ export async function runEpicSynthesize(input: {
 	heartbeatCadenceMinutes?: number;
 	disableHeartbeats?: boolean;
 	progressListener?: (event: AttachedProgressEvent) => void;
-}): Promise<EpicSynthesisWorkflowResult> {
-	const context = await prepareSynthesisContext(input);
+}): Promise<EpicReverifyWorkflowResult> {
+	const mode =
+		typeof input.provider === "string" || typeof input.sessionId === "string"
+			? "followup"
+			: "initial";
+	const provider =
+		mode === "followup" ? providerIdSchema.safeParse(input.provider) : null;
+	if (mode === "followup" && (!provider?.success || !input.sessionId)) {
+		return {
+			outcome: "blocked",
+			errors: [
+				blockedError(
+					"CONTINUATION_HANDLE_INVALID",
+					"Epic reverify follow-up requires --provider and --session-id.",
+				),
+			],
+			warnings: [],
+		};
+	}
+
+	const context = await prepareReverifyContext(input);
 	if ("errors" in context) {
 		return {
 			outcome: "blocked",
@@ -353,11 +406,14 @@ export async function runEpicSynthesize(input: {
 		};
 	}
 
+	const executionProvider = provider?.success
+		? provider.data
+		: context.provider;
 	const progressTracker = input.runtimeProgressPaths
 		? await RuntimeProgressTracker.start({
-				command: "epic-synthesize",
-				phase: "epic-synthesis",
-				provider: context.provider,
+				command: "epic-reverify",
+				phase: "epic-reverify",
+				provider: executionProvider,
 				cwd: context.providerCwd,
 				timeoutMs: context.timeoutMs,
 				configuredStartupTimeoutMs: context.startupTimeoutMs,
@@ -374,7 +430,7 @@ export async function runEpicSynthesize(input: {
 
 	const heartbeat = progressTracker
 		? createPrimitiveHeartbeatEmitter({
-				command: "epic-synthesize",
+				command: "epic-reverify",
 				config: context.callerHarnessConfig,
 				callerHarness: input.callerHarness,
 				heartbeatCadenceMinutes: input.heartbeatCadenceMinutes,
@@ -386,15 +442,15 @@ export async function runEpicSynthesize(input: {
 	heartbeat?.start();
 	try {
 		const prompt = await assemblePrompt({
-			role: "epic_synthesizer",
+			role: "epic_reverifier",
 			epicPath: context.paths.epicPath,
 			techDesignPath: context.paths.techDesignPath,
 			techDesignCompanionPaths: context.paths.techDesignCompanionPaths,
 			testPlanPath: context.paths.testPlanPath,
-			verifierReportPaths: context.verifierReportPaths,
+			reviewReportPaths: context.reviewReportPaths,
 			gateCommands: context.gateCommands,
 		});
-		const adapter = createProviderAdapter(context.provider, {
+		const adapter = createProviderAdapter(executionProvider, {
 			env: input.env,
 		});
 		const execution = await adapter.execute({
@@ -402,10 +458,11 @@ export async function runEpicSynthesize(input: {
 			cwd: context.providerCwd,
 			model: context.model,
 			reasoningEffort: context.reasoningEffort,
+			resumeSessionId: mode === "followup" ? input.sessionId : undefined,
 			timeoutMs: context.timeoutMs,
 			startupTimeoutMs: context.startupTimeoutMs,
 			silenceTimeoutMs: context.silenceTimeoutMs,
-			resultSchema: epicSynthesisProviderPayloadSchema,
+			resultSchema: epicReverifyProviderPayloadSchema,
 			streamOutputPaths: input.streamOutputPaths,
 			lifecycleCallback: (event: ProviderLifecycleEvent) =>
 				progressTracker?.handleProviderLifecycle(event),
@@ -413,7 +470,7 @@ export async function runEpicSynthesize(input: {
 
 		if (execution.exitCode !== 0) {
 			await progressTracker?.markFailed(
-				"epic-synthesize failed during provider execution.",
+				"epic-reverify failed during provider execution.",
 				{
 					errorCode: execution.errorCode,
 				},
@@ -423,7 +480,7 @@ export async function runEpicSynthesize(input: {
 				outcome: "blocked",
 				errors: [
 					executionFailureError({
-						provider: context.provider,
+						provider: executionProvider,
 						stderr: execution.stderr,
 						errorCode: execution.errorCode,
 					}),
@@ -434,7 +491,7 @@ export async function runEpicSynthesize(input: {
 
 		if (execution.parseError || !execution.parsedResult) {
 			await progressTracker?.markFailed(
-				"epic-synthesize produced invalid provider output.",
+				"epic-reverify produced invalid provider output.",
 				{
 					parseError: execution.parseError,
 				},
@@ -445,7 +502,7 @@ export async function runEpicSynthesize(input: {
 				errors: [
 					blockedError(
 						"PROVIDER_OUTPUT_INVALID",
-						`Provider output was invalid for ${context.provider}.`,
+						`Provider output was invalid for ${executionProvider}.`,
 						execution.parseError,
 					),
 				],
@@ -453,9 +510,33 @@ export async function runEpicSynthesize(input: {
 			};
 		}
 
-		const result = buildSynthesisResult(execution.parsedResult);
+		const sessionId = execution.sessionId ?? input.sessionId;
+		if (!sessionId) {
+			await progressTracker?.markFailed(
+				"epic-reverify did not return a retained provider session id.",
+			);
+			await progressTracker?.flush();
+			return {
+				outcome: "blocked",
+				errors: [
+					blockedError(
+						"CONTINUATION_HANDLE_INVALID",
+						`Provider '${executionProvider}' did not return a session id for the retained epic-reverify session.`,
+					),
+				],
+				warnings: [],
+			};
+		}
+
+		const result = buildReverifyResult({
+			provider: executionProvider,
+			model: context.model,
+			sessionId,
+			mode,
+			payload: execution.parsedResult,
+		});
 		await progressTracker?.markCompleted(
-			`epic-synthesize completed with outcome ${result.outcome}.`,
+			`epic-reverify completed with outcome ${result.outcome}.`,
 			{
 				outcome: result.outcome,
 			},

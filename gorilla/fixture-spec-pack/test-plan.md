@@ -14,7 +14,7 @@ Exercise the gorilla pack against a realistic but tiny spec pack whose documents
 - Run `story-implement`, `story-self-review`, and `story-verify` against `stories/01-structured-output-hardening.md`.
 
 ### Story 2
-- Run `epic-verify`, `epic-synthesize`, and `epic-cleanup`.
+- Run `epic-review`, `epic-reverify`, and `epic-fix`.
 - Capture one evidence report per gorilla scenario: smoke, resume, structured-output, stall.
 
 ## Manual Notes

@@ -21,13 +21,13 @@
   },
   "epic_verifiers": [
     {
-      "label": "epic-verifier-1",
+      "label": "epic-reviewer-1",
       "secondary_harness": "codex",
       "model": "gpt-5.4",
       "reasoning_effort": "xhigh"
     }
   ],
-  "epic_synthesizer": {
+  "epic_reverifier": {
     "secondary_harness": "codex",
     "model": "gpt-5.4",
     "reasoning_effort": "xhigh"

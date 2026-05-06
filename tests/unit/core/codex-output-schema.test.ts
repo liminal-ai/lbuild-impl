@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
-import { epicCleanupProviderPayloadSchema } from "../../../src/core/epic-cleanup";
-import { epicSynthesisProviderPayloadSchema } from "../../../src/core/epic-synthesizer";
-import { epicVerifierProviderPayloadSchema } from "../../../src/core/epic-verifier";
+import { epicFixProviderPayloadSchema } from "../../../src/core/epic-fix";
+import { epicReverifyProviderPayloadSchema } from "../../../src/core/epic-reverifier";
+import { epicVerifierProviderPayloadSchema } from "../../../src/core/epic-reviewer";
 import {
 	buildStrictCodexOutputSchema,
 	isCodexStructuredOutputRootSchema,
@@ -94,9 +94,9 @@ test("all fresh Codex provider payload schemas are OpenAI strict-mode compatible
 	const schemas = [
 		storyImplementorProviderPayloadSchema,
 		storyVerifierProviderPayloadSchema,
-		epicCleanupProviderPayloadSchema,
+		epicFixProviderPayloadSchema,
 		epicVerifierProviderPayloadSchema,
-		epicSynthesisProviderPayloadSchema,
+		epicReverifyProviderPayloadSchema,
 	];
 
 	for (const schema of schemas) {

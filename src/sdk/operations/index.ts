@@ -1,6 +1,6 @@
-export { epicCleanup } from "./epic-cleanup.js";
-export { epicSynthesize } from "./epic-synthesize.js";
-export { epicVerify } from "./epic-verify.js";
+export { epicFix } from "./epic-fix.js";
+export { epicReverify } from "./epic-reverify.js";
+export { epicReview } from "./epic-review.js";
 export { inspect } from "./inspect.js";
 export { preflight } from "./preflight.js";
 export { quickFix } from "./quick-fix.js";

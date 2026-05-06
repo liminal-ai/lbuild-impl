@@ -116,13 +116,13 @@ export const storyVerifierOutcomeSchema = z.enum([
 	"needs-human-ruling",
 ]);
 
-export const epicCleanupOutcomeSchema = z.enum([
+export const epicFixOutcomeSchema = z.enum([
 	"cleaned",
-	"needs-more-cleanup",
+	"needs-more-fix",
 	"blocked",
 ]);
 
-export const epicSynthesisOutcomeSchema = z.enum([
+export const epicReverifyOutcomeSchema = z.enum([
 	"ready-for-closeout",
 	"needs-fixes",
 	"needs-more-verification",
@@ -203,6 +203,14 @@ export const continuationHandleSchema = z
 		provider: providerIdSchema,
 		sessionId: z.string().min(1),
 		storyId: z.string().min(1),
+	})
+	.strict();
+
+export const epicContinuationHandleSchema = z
+	.object({
+		provider: providerIdSchema,
+		sessionId: z.string().min(1),
+		operation: z.enum(["epic-fix", "epic-reverify"]),
 	})
 	.strict();
 
@@ -468,18 +476,46 @@ export const storyVerifierResultSchema = z
 		}
 	});
 
-export const epicCleanupResultSchema = z
+export const epicFixResultSchema = z
 	.object({
 		resultId: z.string().min(1),
-		outcome: epicCleanupOutcomeSchema,
-		cleanupBatchPath: z.string().min(1),
+		provider: providerIdSchema,
+		model: z.string().min(1),
+		sessionId: z.string().min(1),
+		continuation: epicContinuationHandleSchema,
+		mode: z.enum(["initial", "followup"]),
+		outcome: epicFixOutcomeSchema,
+		fixBatchPath: z.string().min(1),
 		filesChanged: z.array(z.string().min(1)),
 		changeSummary: z.string().min(1),
 		gatesRun: z.array(gateRunSchema),
 		unresolvedConcerns: z.array(z.string()),
 		recommendedNextStep: z.string().min(1),
 	})
-	.strict();
+	.strict()
+	.superRefine((value, ctx) => {
+		if (value.provider !== value.continuation.provider) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Epic fix provider must match continuation.provider",
+				path: ["continuation", "provider"],
+			});
+		}
+		if (value.sessionId !== value.continuation.sessionId) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Epic fix sessionId must match continuation.sessionId",
+				path: ["continuation", "sessionId"],
+			});
+		}
+		if (value.continuation.operation !== "epic-fix") {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Epic fix continuation.operation must be epic-fix",
+				path: ["continuation", "operation"],
+			});
+		}
+	});
 
 export const epicVerifierResultSchema = z
 	.object({
@@ -488,6 +524,22 @@ export const epicVerifierResultSchema = z
 		provider: providerIdSchema,
 		model: z.string().min(1),
 		reviewerLabel: z.string().min(1),
+		crossStoryFindings: z.array(z.string()),
+		architectureFindings: z.array(z.string()),
+		epicCoverageAssessment: z.array(z.string()),
+		productionPathFindings: z.array(z.string()),
+		blockingFindings: z.array(verifierFindingSchema),
+		nonBlockingFindings: z.array(verifierFindingSchema),
+		unresolvedItems: z.array(z.string()),
+		gateResult: z.enum(["pass", "fail", "not-run"]),
+	})
+	.strict();
+
+export const epicCanonicalReviewSchema = z
+	.object({
+		outcome: verifierBatchOutcomeSchema,
+		reviewerLabels: z.array(z.string().min(1)).min(1),
+		reconciliationSummary: z.string().min(1),
 		crossStoryFindings: z.array(z.string()),
 		architectureFindings: z.array(z.string()),
 		epicCoverageAssessment: z.array(z.string()),
@@ -518,32 +570,58 @@ export function aggregateEpicVerifierBatchOutcome(
 export const epicVerifierBatchResultSchema = z
 	.object({
 		outcome: verifierBatchOutcomeSchema,
+		canonicalReview: epicCanonicalReviewSchema,
 		verifierResults: z.array(epicVerifierResultSchema).min(1),
 	})
 	.strict()
 	.superRefine((value, ctx) => {
-		const expectedOutcome = aggregateEpicVerifierBatchOutcome(
-			value.verifierResults,
-		);
-		if (value.outcome !== expectedOutcome && value.outcome !== "block") {
+		if (value.canonicalReview.outcome !== value.outcome) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				message: `Epic verifier batch outcome '${value.outcome}' does not match aggregated verifier outcomes '${expectedOutcome}' unless the batch is blocked by verifier execution failure`,
-				path: ["outcome"],
+				message: "Epic review canonicalReview.outcome must match batch outcome",
+				path: ["canonicalReview", "outcome"],
 			});
 		}
 	});
 
-export const epicSynthesisResultSchema = z
+export const epicReverifyResultSchema = z
 	.object({
 		resultId: z.string().min(1),
-		outcome: epicSynthesisOutcomeSchema,
+		provider: providerIdSchema,
+		model: z.string().min(1),
+		sessionId: z.string().min(1),
+		continuation: epicContinuationHandleSchema,
+		mode: z.enum(["initial", "followup"]),
+		outcome: epicReverifyOutcomeSchema,
 		confirmedIssues: z.array(z.string()),
 		disputedOrUnconfirmedIssues: z.array(z.string()),
 		readinessAssessment: z.string().min(1),
 		recommendedNextStep: z.string().min(1),
 	})
-	.strict();
+	.strict()
+	.superRefine((value, ctx) => {
+		if (value.provider !== value.continuation.provider) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Epic reverify provider must match continuation.provider",
+				path: ["continuation", "provider"],
+			});
+		}
+		if (value.sessionId !== value.continuation.sessionId) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Epic reverify sessionId must match continuation.sessionId",
+				path: ["continuation", "sessionId"],
+			});
+		}
+		if (value.continuation.operation !== "epic-reverify") {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Epic reverify continuation.operation must be epic-reverify",
+				path: ["continuation", "operation"],
+			});
+		}
+	});
 
 export const quickFixResultSchema = z
 	.object({
@@ -569,23 +647,27 @@ export type ProviderMatrix = z.infer<typeof providerMatrixSchema>;
 export type VerificationGates = z.infer<typeof verificationGatesSchema>;
 export type PreflightResult = z.infer<typeof preflightResultSchema>;
 export type VerifierBatchOutcome = z.infer<typeof verifierBatchOutcomeSchema>;
-export type EpicCleanupOutcome = z.infer<typeof epicCleanupOutcomeSchema>;
-export type EpicSynthesisOutcome = z.infer<typeof epicSynthesisOutcomeSchema>;
+export type EpicFixOutcome = z.infer<typeof epicFixOutcomeSchema>;
+export type EpicReverifyOutcome = z.infer<typeof epicReverifyOutcomeSchema>;
 export type FindingSeverity = z.infer<typeof findingSeveritySchema>;
 export type RecommendedFixScope = z.infer<typeof recommendedFixScopeSchema>;
 export type ProviderId = z.infer<typeof providerIdSchema>;
 export type ContinuationHandle = z.infer<typeof continuationHandleSchema>;
+export type EpicContinuationHandle = z.infer<
+	typeof epicContinuationHandleSchema
+>;
 export type ImplementorResult = z.infer<typeof implementorResultSchema>;
 export type StorySelfReviewResult = z.infer<typeof storySelfReviewResultSchema>;
 export type VerifierFinding = z.infer<typeof verifierFindingSchema>;
 export type PriorFindingStatus = z.infer<typeof priorFindingStatusSchema>;
-export type EpicCleanupResult = z.infer<typeof epicCleanupResultSchema>;
+export type EpicFixResult = z.infer<typeof epicFixResultSchema>;
+export type EpicCanonicalReview = z.infer<typeof epicCanonicalReviewSchema>;
 export type EpicVerifierResult = z.infer<typeof epicVerifierResultSchema>;
 export type StoryVerifierResult = z.infer<typeof storyVerifierResultSchema>;
 export type EpicVerifierBatchResult = z.infer<
 	typeof epicVerifierBatchResultSchema
 >;
-export type EpicSynthesisResult = z.infer<typeof epicSynthesisResultSchema>;
+export type EpicReverifyResult = z.infer<typeof epicReverifyResultSchema>;
 export type QuickFixResult = z.infer<typeof quickFixResultSchema>;
 
 export function statusForOutcome(outcome: string): CliStatus {
@@ -596,7 +678,7 @@ export function statusForOutcome(outcome: string): CliStatus {
 		case "pass":
 		case "revise":
 		case "cleaned":
-		case "needs-more-cleanup":
+		case "needs-more-fix":
 		case "ready-for-closeout":
 		case "needs-fixes":
 		case "needs-more-routing":

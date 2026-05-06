@@ -21,13 +21,13 @@
   },
   "epic_verifiers": [
     {
-      "label": "epic-verifier-1",
+      "label": "epic-reviewer-1",
       "secondary_harness": "codex",
       "model": "gpt-5.4-mini",
       "reasoning_effort": "low"
     }
   ],
-  "epic_synthesizer": {
+  "epic_reverifier": {
     "secondary_harness": "codex",
     "model": "gpt-5.4-mini",
     "reasoning_effort": "low"
@@ -42,12 +42,12 @@
     "story_implementor_silence_timeout_ms": 1500,
     "story_verifier_ms": 6000,
     "story_verifier_silence_timeout_ms": 1500,
-    "epic_cleanup_ms": 6000,
-    "epic_cleanup_silence_timeout_ms": 1500,
-    "epic_verifier_ms": 6000,
-    "epic_verifier_silence_timeout_ms": 1500,
-    "epic_synthesizer_ms": 6000,
-    "epic_synthesizer_silence_timeout_ms": 1500,
+    "epic_fixer_ms": 6000,
+    "epic_fixer_silence_timeout_ms": 1500,
+    "epic_reviewer_ms": 6000,
+    "epic_reviewer_silence_timeout_ms": 1500,
+    "epic_reverifier_ms": 6000,
+    "epic_reverifier_silence_timeout_ms": 1500,
     "quick_fixer_ms": 6000,
     "quick_fixer_silence_timeout_ms": 1500,
     "story_self_review_silence_timeout_ms": 1500

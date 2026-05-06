@@ -15,9 +15,9 @@ Use `node bin/ls-impl-cli.cjs ...` as the portable invocation form. Direct execu
 - `story-self-review` — run explicit same-session self-review passes against the retained implementor session
 - `story-verify` — start or continue the retained verifier session for one story
 - `quick-fix` — run a narrow, bounded correction
-- `epic-cleanup` — apply cleanup-only corrections before epic verification
-- `epic-verify` — run fresh epic-level verification
-- `epic-synthesize` — verify and consolidate epic-level findings
+- `epic-fix` — apply bounded epic-level fixes before epic reverify
+- `epic-review` — run fresh epic-level review
+- `epic-reverify` — run retained follow-up epic review
 
 ## Routing matrix
 
@@ -28,16 +28,16 @@ Every envelope has a `status` and an `outcome`. Together they determine your nex
 | `ready` | `ok` | 0 | Proceed to the next setup step |
 | `ready-for-verification` | `ok` | 0 | Run verification or the next bounded step |
 | `pass` | `ok` | 0 | Evaluate for acceptance or next stage |
-| `cleaned` | `ok` | 0 | Move into epic verification |
+| `cleaned` | `ok` | 0 | Move into epic reverify or closeout routing |
 | `ready-for-closeout` | `ok` | 0 | Run the final orchestrator-owned gate |
 | `needs-user-decision` | `needs-user-decision` | 2 | Pause and request user clarification |
 | `needs-followup-fix` | `ok` | 2 | Route same-session follow-up (see `phases/21-verification-and-fix-routing.md`) |
 | `needs-human-ruling` | `needs-user-decision` | 2 | Pause for user ruling; keep the surfaced uncertainty explicit |
 | `revise` | `ok` | 2 | Route a fix and rerun verification |
 | `needs-more-routing` | `ok` | 2 | Select another bounded correction path |
-| `needs-more-cleanup` | `ok` | 2 | Continue the cleanup cycle |
+| `needs-more-fix` | `ok` | 2 | Continue the fix cycle |
 | `needs-fixes` | `ok` | 2 | Route fixes before closeout |
-| `needs-more-verification` | `ok` | 2 | Launch additional verification or synthesis |
+| `needs-more-verification` | `ok` | 2 | Launch additional verification or reverify |
 | `block` | `blocked` | 3 | Stop; inspect blocker details in the envelope |
 | (schema/parse/runtime failure) | `error` | 1 | Treat as CLI failure, not a workflow outcome |
 
@@ -137,35 +137,35 @@ Pass the bounded fix description as text or file. The inner result payload is pr
 
 Outcomes: `ready-for-verification`, `needs-more-routing`, `blocked`.
 
-### `epic-cleanup`
+### `epic-fix`
 
-Runs the approved cleanup batch before epic verification. Uses the `quick_fixer` role configuration from `impl-run.config.json`.
+Runs a bounded epic-level fix pass from a curated fix batch. Uses the `quick_fixer` role configuration from `impl-run.config.json`.
 
 ```bash
-node bin/ls-impl-cli.cjs epic-cleanup --spec-pack-root <path> --cleanup-batch <path> [--config <path>] --json
+node bin/ls-impl-cli.cjs epic-fix --spec-pack-root <path> --fix-batch <path> [--config <path>] --json
 ```
 
-Outcomes: `cleaned`, `needs-more-cleanup`, `blocked`.
+Outcomes: `cleaned`, `needs-more-fix`, `blocked`.
 
-### `epic-verify`
+### `epic-review`
 
-Launches the epic-level verifier batch. Fresh sessions.
+Launches the epic-level reviewer batch. Fresh sessions. When more than one reviewer is configured, the runtime performs its internal canonical reconciliation step before returning the final result envelope.
 
 ```bash
-node bin/ls-impl-cli.cjs epic-verify --spec-pack-root <path> [--config <path>] --json
+node bin/ls-impl-cli.cjs epic-review --spec-pack-root <path> [--config <path>] --json
 ```
 
 Outcomes: `pass`, `revise`, `block`.
 
-### `epic-synthesize`
+### `epic-reverify`
 
-Runs synthesis across epic verifier reports. Synthesis independently verifies the reported issues rather than merging them.
+Runs retained follow-up epic review from the current canonical epic review findings.
 
 ```bash
-node bin/ls-impl-cli.cjs epic-synthesize --spec-pack-root <path> --verifier-report <path> --verifier-report <path> [--config <path>] --json
+node bin/ls-impl-cli.cjs epic-reverify --spec-pack-root <path> --review-report <path> --review-report <path> [--config <path>] --json
 ```
 
-Pass each `epic-verify` result artifact via `--verifier-report`.
+Pass each `epic-review` result artifact via `--review-report`.
 
 Outcomes: `ready-for-closeout`, `needs-fixes`, `needs-more-verification`, `blocked`.
 

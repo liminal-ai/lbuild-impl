@@ -1,9 +1,9 @@
-import { runEpicSynthesize } from "../../core/epic-synthesizer.js";
-import { epicSynthesisResultSchema } from "../../core/result-contracts.js";
+import { runEpicFix } from "../../core/epic-fix.js";
+import { epicFixResultSchema } from "../../core/result-contracts.js";
 import {
-	type EpicSynthesisResult,
-	type EpicSynthesizeInput,
-	epicSynthesizeInputSchema,
+	type EpicFixInput,
+	type EpicFixResult,
+	epicFixInputSchema,
 } from "../contracts/operations.js";
 import {
 	buildUnexpectedEnvelope,
@@ -13,41 +13,25 @@ import {
 	withSdkExecutionContext,
 } from "./shared.js";
 
-export async function epicSynthesize(
-	input: EpicSynthesizeInput,
-): Promise<EpicSynthesisResult> {
-	const parsedInput = parseSdkInput(epicSynthesizeInputSchema, input);
+export async function epicFix(input: EpicFixInput): Promise<EpicFixResult> {
+	const parsedInput = parseSdkInput(epicFixInputSchema, input);
 
 	return await withSdkExecutionContext(parsedInput, async () => {
 		const startedAt = new Date().toISOString();
 		const artifactPath = await resolveOperationArtifactPath({
-			command: "epic-synthesize",
+			command: "epic-fix",
 			specPackRoot: parsedInput.specPackRoot,
 			artifactPath: parsedInput.artifactPath,
-			group: "epic",
-			fileName: "epic-synthesis",
+			group: "fix",
+			fileName: "fix-result",
 		});
 
-		if (parsedInput.verifierReportPaths.length === 0) {
-			return await finalizeEnvelope({
-				command: "epic-synthesize",
-				artifactPath,
-				startedAt,
-				outcome: "error",
-				resultSchema: epicSynthesisResultSchema,
-				errors: [
-					{
-						code: "INVALID_INPUT",
-						message: "Provide at least one verifier report path.",
-					},
-				],
-			});
-		}
-
 		try {
-			const outcome = await runEpicSynthesize({
+			const outcome = await runEpicFix({
 				specPackRoot: parsedInput.specPackRoot,
-				verifierReportPaths: parsedInput.verifierReportPaths,
+				fixBatchPath: parsedInput.fixBatchPath,
+				provider: parsedInput.provider,
+				sessionId: parsedInput.sessionId,
 				configPath: parsedInput.configPath,
 				env: parsedInput.env,
 				artifactPath,
@@ -59,18 +43,18 @@ export async function epicSynthesize(
 				progressListener: parsedInput.progressListener,
 			});
 			return await finalizeEnvelope({
-				command: "epic-synthesize",
+				command: "epic-fix",
 				artifactPath,
 				startedAt,
 				outcome: outcome.outcome,
-				resultSchema: epicSynthesisResultSchema,
+				resultSchema: epicFixResultSchema,
 				result: outcome.result,
 				errors: outcome.errors,
 				warnings: outcome.warnings,
 			});
 		} catch (error) {
 			const envelope = buildUnexpectedEnvelope({
-				command: "epic-synthesize",
+				command: "epic-fix",
 				artifactPath,
 				startedAt,
 				error,
@@ -80,7 +64,7 @@ export async function epicSynthesize(
 				artifactPath,
 				startedAt,
 				outcome: envelope.outcome,
-				resultSchema: epicSynthesisResultSchema,
+				resultSchema: epicFixResultSchema,
 				errors: envelope.errors,
 			});
 		}

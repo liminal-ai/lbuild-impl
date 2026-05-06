@@ -1,83 +1,70 @@
-# Cleanup and Closeout
+# Closeout
 
-Stage 5 runs once, after all stories are accepted. You compile deferred items into a cleanup batch, review with the user, dispatch the approved fixes, verify the cleaned state, then run epic verification, synthesis, and the final epic gate. No skip paths.
+Stage 5 runs after all stories are accepted. The default closeout path is one epic review loop:
+
+`epic-review -> epic-fix -> epic-reverify -> epic-fix -> epic-reverify ...`
+
+Stop the loop only when the current epic review state is converged and the epic gate has passed on that same candidate state.
 
 | Step | State | Current Phase |
 |---|---|---|
 | Enter from `phases/20-story-cycle.md` | `PRE_EPIC_VERIFY` | — |
-| 1 — Compile cleanup batch | `EPIC_VERIFY_ACTIVE` | `cleanup-compile` |
-| 2 — Review with user | `EPIC_VERIFY_ACTIVE` | `cleanup-review` |
-| 3 — Dispatch cleanup | `EPIC_VERIFY_ACTIVE` | `cleanup-dispatch` |
-| 4 — Verify cleanup result | `EPIC_VERIFY_ACTIVE` | `cleanup-verify` |
-| 5 — Run epic verification | `EPIC_VERIFY_ACTIVE` | `epic-verify` |
-| 6 — Run epic synthesis | `EPIC_VERIFY_ACTIVE` | `epic-synthesize` |
-| 7 — Run final epic gate | `EPIC_VERIFY_ACTIVE` | `epic-gate` |
+| 1 — Run epic review | `EPIC_VERIFY_ACTIVE` | `epic-review` |
+| 2 — Run epic fix | `EPIC_VERIFY_ACTIVE` | `epic-fix` |
+| 3 — Run epic reverify | `EPIC_VERIFY_ACTIVE` | `epic-reverify` |
+| 4 — Run final epic gate | `EPIC_VERIFY_ACTIVE` | `epic-gate` |
 | Complete | `COMPLETE` | — |
 
-## 1. Compile the cleanup batch
-
-Walk the story receipts in `team-impl-log.md` and extract every item with a `defer` or `accepted-risk` disposition. Write them into a cleanup artifact (a markdown file under `artifacts/cleanup/`). Include all items, even small ones — do not filter on severity.
-
-If a story used `story-orchestrate`, fold in the `cleanupHandoff` and any accepted-risk/deferred items from the story-lead final package before epic verification begins.
-
-## 2. Review with the user
-
-Present the categorized cleanup batch to the user. Do not dispatch without review. The user decides which items to fix, accept, or defer permanently.
-
-## 3. Dispatch approved cleanup items
+## 1. Run epic review
 
 ```bash
-lbuild-impl epic-cleanup --spec-pack-root <path> --cleanup-batch <artifact-path> --json
+lbuild-impl epic-review --spec-pack-root <path> --json
 ```
 
 Route on the outcome:
 
-- **`cleaned`** — proceed to step 4.
-- **`needs-more-cleanup`** — update the batch with remaining items, dispatch again.
+- **`pass`** — you may still choose one bounded `epic-fix` round for selected non-blocking items before closeout, otherwise proceed to step 3.
+- **`revise`** — compile a bounded fix batch and proceed to step 2.
 - **`blocked`** — inspect blockers, resolve, retry.
 
-## 4. Verify the cleanup result
+`epic-review` is the fresh wide-net closeout review. When more than one reviewer is configured, the runtime performs the internal canonical reconciliation step before returning the final result.
 
-Run the story gate yourself to confirm the cleaned state still passes. If it fails, route the failure through `21-verification-and-fix-routing.md` before continuing.
-
-## 5. Run epic verification
+## 2. Run epic fix
 
 ```bash
-lbuild-impl epic-verify --spec-pack-root <path> --json
+lbuild-impl epic-fix --spec-pack-root <path> --fix-batch <artifact-path> --json
 ```
+
+Compile the fix batch from the specific current epic-review findings you actually want to address now. Do not use `epic-fix` as a dumping ground for broad redesign work or human-ruling items.
 
 Route on the outcome:
 
-- **`pass`** — proceed to step 6.
-- **`revise`** — consult `21-verification-and-fix-routing.md`; rerun verification after fixes.
-- **`block`** — inspect blockers, resolve, retry.
-
-Epic verification is mandatory for every multi-story epic. There is no skip path.
-
-## 6. Run epic synthesis
-
-```bash
-lbuild-impl epic-synthesize --spec-pack-root <path> --verifier-report <path> --verifier-report <path> --json
-```
-
-Pass each `epic-verify` result artifact as a `--verifier-report` flag. Synthesis independently verifies and consolidates the verifier findings rather than merging them blindly.
-
-Route on the outcome:
-
-- **`ready-for-closeout`** — proceed to step 7.
-- **`needs-fixes`** — consult `21-verification-and-fix-routing.md`.
-- **`needs-more-verification`** — return to step 5 after addressing the synthesizer's concerns.
+- **`cleaned`** — proceed to step 3.
+- **`needs-more-fix`** — refine the bounded fix batch and run another fix round if you want another bounded pass.
 - **`blocked`** — inspect blockers, resolve, retry.
 
-Synthesis is mandatory once verifier reports exist. There is no skip path.
+## 3. Run epic reverify
 
-## 7. Run the final epic gate
+```bash
+lbuild-impl epic-reverify --spec-pack-root <path> --review-report <path> --json
+```
+
+Pass the current canonical `epic-review` artifact via `--review-report`. Reverify is the normal follow-up review loop after epic-level fixes.
+
+Route on the outcome:
+
+- **`ready-for-closeout`** — proceed to step 4.
+- **`needs-fixes`** — return to step 2 with a refined bounded fix batch.
+- **`needs-more-verification`** — decide whether the epic needs another fresh `epic-review` round or a human ruling.
+- **`blocked`** — inspect blockers, resolve, retry.
+
+## 4. Run the final epic gate
 
 The CLI does not close epics. You do. Run the epic gate command recorded in `team-impl-log.md`:
 
 - Passes cleanly — record the result, set `State` to `COMPLETE`, and notify the user that the run is complete.
-- Fails — route the failure through `21-verification-and-fix-routing.md`; do not close the epic on a failing gate.
+- Fails — route the failure back into the epic fix/reverify loop; do not close the epic on a failing gate.
 
 ## Exit
 
-Final epic gate passed, log updated to `State: COMPLETE`. The run is finished.
+The current epic review state is converged, the epic gate passed on that same candidate state, and the log is updated to `State: COMPLETE`. At that point, check in with the human about commit/push/PR rather than assuming publication steps.

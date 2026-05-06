@@ -139,13 +139,13 @@ describe("runtime progress artifacts", () => {
 			tempDir,
 			"artifacts",
 			"epic",
-			"001-epic-synthesis.json",
+			"001-epic-reverify.json",
 		);
 		const streamPaths = buildStreamOutputPaths(artifactPath);
 		const progressPaths = buildRuntimeProgressPaths(artifactPath);
 		const tracker = await RuntimeProgressTracker.start({
-			command: "epic-synthesize",
-			phase: "epic-synthesis",
+			command: "epic-reverify",
+			phase: "epic-reverify",
 			provider: "codex",
 			cwd: ROOT,
 			timeoutMs: 50,
@@ -165,7 +165,7 @@ describe("runtime progress artifacts", () => {
 		});
 		expect(execution.errorCode).toBe("PROVIDER_TIMEOUT");
 
-		await tracker.markFailed("epic-synthesize timed out.", {
+		await tracker.markFailed("epic-reverify timed out.", {
 			errorCode: execution.errorCode,
 		});
 		await tracker.flush();

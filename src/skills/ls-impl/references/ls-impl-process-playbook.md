@@ -8,7 +8,7 @@ This is the main process reference after setup. Use it to decide which bounded C
 2. Preflight: validate the authored run configuration before any provider-backed work starts.
 3. Story validate: run `story-orchestrate validate` for the active story to confirm readiness before launch and make sure the baseline needed for later acceptance is available.
 4. Story cycle: implement, self-review, verify, run the final story gate, record the story receipt, then decide whether to advance.
-5. Closeout: complete cleanup, epic verification, synthesis, and the final orchestrator-owned gate.
+5. Closeout: run `epic-review`, route `epic-fix`, use `epic-reverify` until convergence, then run the epic gate on that converged candidate.
 
 ## Setup Rules
 
@@ -103,20 +103,13 @@ Before accepting a story, record:
 
 ## Epic Closeout Rules
 
-- Do not launch epic verification until the cleanup artifact exists on disk.
-- Review the categorized cleanup batch with the human before dispatching `epic-cleanup`.
-- Do not treat cleanup review as a CLI-owned decision.
-- Carry accepted-risk and deferred story items into the cleanup batch before epic verification starts.
-- Verify the cleanup result before launching `epic-verify`.
-- Epic verification starts from the cleaned state rather than from outstanding tracked cleanup items.
-- For every multi-story epic, run `epic-verify` before final closeout.
+- For every multi-story epic, run `epic-review` before final closeout.
 - Do not close the epic directly from accepted stories.
-- Do not offer or invent a skip path around epic verification.
-- Epic verification is required even when story-level verification already passed.
-- After `epic-verify` returns, launch `epic-synthesize` every run.
-- Do not treat synthesis as optional when verifier reports already exist.
-- Do not offer or invent a skip path around synthesis after epic verifier reports exist.
+- Do not offer or invent a skip path around epic review.
+- `epic-reverify` is the normal follow-up review loop after epic-level fixes. Do not restart fresh epic review by default after every fix.
+- Use `epic-fix` only for the specific bounded current review items you want to address now.
 - Treat `ready-for-closeout` as evidence to review, not as automatic epic acceptance.
+- The epic gate must pass on the converged candidate state before closeout.
 
 ## Recovery Rule
 

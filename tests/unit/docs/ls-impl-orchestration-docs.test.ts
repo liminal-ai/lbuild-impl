@@ -90,7 +90,7 @@ describe("ls-impl orchestration docs", () => {
 		expect(playbook).toContain("resume only the smallest missing bounded step");
 	});
 
-	test("TC-4.6a, TC-4.6b, and TC-4.6c preserve log handoff, commit acceptance, and cleanup obligations", async () => {
+	test("TC-4.6a, TC-4.6b, and TC-4.6c preserve log handoff, commit acceptance, and epic-fix closeout obligations", async () => {
 		const [storyCycle, cleanup] = await Promise.all([
 			readDoc("src/skills/ls-impl/phases/20-story-cycle.md"),
 			readDoc("src/skills/ls-impl/phases/23-cleanup-and-closeout.md"),
@@ -99,9 +99,9 @@ describe("ls-impl orchestration docs", () => {
 		expect(storyCycle).toContain("`logHandoff`");
 		expect(storyCycle).toContain("The commit is part of acceptance");
 		expect(storyCycle).toContain(
-			"carry them forward into the cleanup batch before epic verification",
+			"keep them explicit in the story receipt so impl-lead can decide later whether they belong in epic closeout discussion, backlog, or a future story",
 		);
-		expect(cleanup).toContain("`cleanupHandoff`");
+		expect(cleanup).toContain("Compile the fix batch from the specific current epic-review findings");
 	});
 
 	test("documents the validate-before-run checkpoint for each story", async () => {

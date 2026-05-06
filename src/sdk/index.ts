@@ -2,9 +2,9 @@ export { packageVersion as version } from "../package-metadata.js";
 export * from "./contracts/index.js";
 export * from "./errors/index.js";
 export {
-	epicCleanup,
-	epicSynthesize,
-	epicVerify,
+	epicFix,
+	epicReverify,
+	epicReview,
 	inspect,
 	type LoadSkillInput,
 	loadSkill,

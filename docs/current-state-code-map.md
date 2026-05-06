@@ -43,13 +43,13 @@ Story-orchestrate surface:
 - `src/core/story-run-ledger.ts`: current snapshot, event history, and final-package persistence for story-lead attempts.
 - `src/core/story-lead.ts`: story-lead runtime surface, provider composition, and durable recovery.
 - `src/core/review-ruling.ts`: review-request and ruling history shaping for story-lead resume/final-package state.
-- `src/core/story-final-package.ts`: story-lead final package assembly, log handoff, and cleanup handoff shaping.
+- `src/core/story-final-package.ts`: story-lead final package assembly, log handoff, and fix handoff shaping.
 - `src/core/story-implementor.ts`: story implementation orchestration.
 - `src/core/story-verifier.ts`: story verification orchestration.
 - `src/core/quick-fix.ts`: bounded fix orchestration.
-- `src/core/epic-verifier.ts`: epic verification orchestration.
-- `src/core/epic-synthesizer.ts`: epic synthesis orchestration.
-- `src/core/epic-cleanup.ts`: cleanup-batch orchestration.
+- `src/core/epic-reviewer.ts`: epic review orchestration.
+- `src/core/epic-reverifier.ts`: epic reverify orchestration.
+- `src/core/epic-fix.ts`: fix-batch orchestration.
 
 ## Provider Layer
 

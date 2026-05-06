@@ -122,7 +122,7 @@ describe("provider executable resolution", () => {
 						reasoning_effort: "high",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "none",
 					model: "claude-sonnet",
 					reasoning_effort: "high",

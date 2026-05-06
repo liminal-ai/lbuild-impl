@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import {
-	epicCleanup,
-	epicSynthesize,
-	epicVerify,
+	epicFix,
+	epicReverify,
+	epicReview,
 	inspect,
 	preflight,
 	quickFix,
@@ -41,35 +41,35 @@ describe("sdk per-operation envelopes", () => {
 		expect(envelope.errors[0]?.code).toBe("INVALID_RUN_CONFIG");
 	});
 
-	test("epic-synthesize returns a structured envelope on invalid run-config", async () => {
-		const specPackRoot = await createSpecPack("sdk-op-epic-synthesize");
-		const envelope = await epicSynthesize({
+	test("epic-reverify returns a structured envelope on invalid run-config", async () => {
+		const specPackRoot = await createSpecPack("sdk-op-epic-reverify");
+		const envelope = await epicReverify({
 			specPackRoot,
-			verifierReportPaths: ["missing-report.json"],
+			reviewReportPaths: ["missing-report.json"],
 		});
 
-		expect(envelope.command).toBe("epic-synthesize");
+		expect(envelope.command).toBe("epic-reverify");
 		expect(envelope.status).toBe("blocked");
 	});
 
-	test("epic-verify returns a structured envelope on invalid run-config", async () => {
-		const specPackRoot = await createSpecPack("sdk-op-epic-verify");
-		const envelope = await epicVerify({
+	test("epic-review returns a structured envelope on invalid run-config", async () => {
+		const specPackRoot = await createSpecPack("sdk-op-epic-review");
+		const envelope = await epicReview({
 			specPackRoot,
 		});
 
-		expect(envelope.command).toBe("epic-verify");
+		expect(envelope.command).toBe("epic-review");
 		expect(envelope.status).toBe("blocked");
 	});
 
-	test("epic-cleanup returns a structured envelope on invalid run-config", async () => {
-		const specPackRoot = await createSpecPack("sdk-op-epic-cleanup");
-		const envelope = await epicCleanup({
+	test("epic-fix returns a structured envelope on invalid run-config", async () => {
+		const specPackRoot = await createSpecPack("sdk-op-epic-fix");
+		const envelope = await epicFix({
 			specPackRoot,
-			cleanupBatchPath: `${specPackRoot}/cleanup-batch.md`,
+			fixBatchPath: `${specPackRoot}/fix-batch.md`,
 		});
 
-		expect(envelope.command).toBe("epic-cleanup");
+		expect(envelope.command).toBe("epic-fix");
 		expect(envelope.status).toBe("blocked");
 	});
 

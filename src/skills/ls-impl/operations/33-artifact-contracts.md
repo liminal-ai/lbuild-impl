@@ -29,9 +29,9 @@ The log is markdown so both you and a reviewer can read it. Its headings are fix
 - Quick Fixer: <harness> / <model> / <reasoning_effort>
 - Story Verifier: <harness> / <model> / <reasoning_effort>
 - Self Review Passes: <n>
-- Epic Verifier 1: <harness> / <model> / <reasoning_effort>
-- Epic Verifier 2: <harness> / <model> / <reasoning_effort>
-- Epic Synthesizer: <harness> / <model> / <reasoning_effort>
+- Epic Reviewer 1: <harness> / <model> / <reasoning_effort>
+- Epic Reviewer 2: <harness> / <model> / <reasoning_effort>
+- Epic Reverifier: <harness> / <model> / <reasoning_effort>
 - Degraded Diversity: <true|false>
 
 ## Verification Gates
@@ -64,11 +64,11 @@ The log is markdown so both you and a reviewer can read it. Its headings are fix
 - Expected After Current Story: <n>
 - Latest Actual Total: <n>
 
-## Cleanup / Epic Verification
-- Cleanup Artifact: <path or "none">
-- Cleanup Status: <not-started|in-progress|cleaned>
-- Epic Verification Status: <not-started|in-progress|pass|revise|block>
-- Synthesis Status: <not-started|in-progress|ready-for-closeout|needs-fixes|needs-more-verification>
+## Epic Closeout
+- Current Epic Review Artifact: <path or "none">
+- Epic Review Status: <not-started|in-progress|pass|revise|block>
+- Epic Fix Status: <not-started|in-progress|cleaned|needs-more-fix|blocked>
+- Epic Reverify Status: <not-started|in-progress|ready-for-closeout|needs-fixes|needs-more-verification|blocked>
 - Final Gate Status: <not-run|pass|fail>
 
 ## Open Risks / Accepted Risks
@@ -98,12 +98,9 @@ Under `STORY_ACTIVE`:
 
 Under `EPIC_VERIFY_ACTIVE`:
 
-- `cleanup-compile`
-- `cleanup-review`
-- `cleanup-dispatch`
-- `cleanup-verify`
-- `epic-verify`
-- `epic-synthesize`
+- `epic-review`
+- `epic-fix`
+- `epic-reverify`
 - `epic-gate`
 
 All other states record `Current Phase: none`.
@@ -178,15 +175,15 @@ Every bounded operation returns a JSON envelope on stdout and persists the same 
 │   └── streams/
 │       ├── 001-quick-fix.stdout.log
 │       └── 001-quick-fix.stderr.log
-├── cleanup/
-│   ├── cleanup-batch.md
-│   └── 001-cleanup-result.json
+├── fix/
+│   ├── 001-epic-fix-batch.md
+│   └── 002-fix-result.json
 └── epic/
-    ├── 001-epic-verifier-batch.json
-    └── 002-epic-synthesis.json
+    ├── 001-epic-review.json
+    └── 002-epic-reverify.json
 ```
 
-Files under each story directory are numbered sequentially in the order the CLI wrote them. `story-self-review` writes one pass artifact per requested pass plus a final batch envelope; skipped passes still leave explicit pass artifacts so numbering and recovery stay deterministic. `story-verify` writes one retained-verifier artifact per verifier pass, whether initial or follow-up. `quick-fix/`, `cleanup/`, and `epic/` follow the same numbering within their scope. `quick-fix/` is top-level because quick-fix is story-agnostic by contract. `cleanup-batch.md` is the orchestrator-authored input for `epic-cleanup`; every other file is a CLI-written result envelope or CLI-written pass artifact.
+Files under each story directory are numbered sequentially in the order the CLI wrote them. `story-self-review` writes one pass artifact per requested pass plus a final batch envelope; skipped passes still leave explicit pass artifacts so numbering and recovery stay deterministic. `story-verify` writes one retained-verifier artifact per verifier pass, whether initial or follow-up. `quick-fix/`, `fix/`, and `epic/` follow the same numbering within their scope. `quick-fix/` is top-level because quick-fix is story-agnostic by contract. `epic-fix-batch.md` is the impl-lead-authored input for `epic-fix`; every other file is a CLI-written result envelope or CLI-written pass artifact.
 
 ## Runtime Progress Artifacts
 
@@ -203,7 +200,7 @@ The progress surface is observational only. It helps the orchestrator report liv
 - Artifacts on disk are the source of truth for what each bounded operation returned. The log references them by path; it does not duplicate their contents.
 - Poll `status.json` first when a long-running operation is active. Use `updatedAt`, `lastOutputAt`, and the stream logs to describe current progress without guessing.
 - Write a receipt for every accepted story; no story advances without one.
-- Update `Current Phase` as you move through story-cycle and cleanup steps. Recovery uses it to locate the last completed checkpoint.
+- Update `Current Phase` as you move through story-cycle and epic closeout steps. Recovery uses it to locate the last completed checkpoint.
 - Record `Story Gate Source` and `Epic Gate Source` at setup; do not silently change gate commands mid-run.
 - Compare `Baseline After` against `Baseline Before` on every story; a drop indicates regression and blocks acceptance.
 - A story is not accepted until its receipt is complete AND the commit has landed.

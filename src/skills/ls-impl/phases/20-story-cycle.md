@@ -159,7 +159,7 @@ Use `spec-pack-root + story-id` as the stable recovery key when the story run id
 Include these receipt fields when story-lead was used:
 
 - any `story-orchestrate` final package, `logHandoff`, and story receipt draft paths
-- any `accepted-risk` or `defer` items; carry them forward into the cleanup batch before epic verification
+- any `accepted-risk` or `defer` items; keep them explicit in the story receipt so impl-lead can decide later whether they belong in epic closeout discussion, backlog, or a future story
 
 The commit is part of acceptance: until it lands, the story remains in `accept` phase and recovery should expect the commit before advancing.
 

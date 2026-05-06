@@ -46,7 +46,7 @@ function codexBackedConfig() {
 				reasoning_effort: "high",
 			},
 		],
-		epic_synthesizer: {
+		epic_reverifier: {
 			secondary_harness: "codex",
 			model: "gpt-5.4",
 			reasoning_effort: "xhigh",
@@ -90,7 +90,7 @@ function codexFallbackConfig() {
 				reasoning_effort: "high",
 			},
 		],
-		epic_synthesizer: {
+		epic_reverifier: {
 			secondary_harness: "codex",
 			model: "gpt-5.4",
 			reasoning_effort: "xhigh",
@@ -133,7 +133,7 @@ function claudeOnlyConfig() {
 				reasoning_effort: "high",
 			},
 		],
-		epic_synthesizer: {
+		epic_reverifier: {
 			secondary_harness: "none",
 			model: "claude-sonnet",
 			reasoning_effort: "high",
@@ -392,7 +392,7 @@ describe("preflight command", () => {
 					reasoning_effort: "high",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "none",
 				model: "claude-sonnet",
 				reasoning_effort: "high",

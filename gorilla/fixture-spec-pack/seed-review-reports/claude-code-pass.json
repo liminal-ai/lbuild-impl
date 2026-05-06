@@ -3,9 +3,9 @@
   "outcome": "pass",
   "provider": "claude-code",
   "model": "claude-sonnet-4-6[1m]",
-  "reviewerLabel": "epic-verifier-claude-code",
+  "reviewerLabel": "epic-reviewer-claude-code",
   "crossStoryFindings": [
-    "The fixture keeps implementation, verification, synthesis, and cleanup paths grounded in concrete files."
+    "The fixture keeps implementation, verification, reverify, and fix paths grounded in concrete files."
   ],
   "architectureFindings": [
     "The target codebase stays small enough to reset and rerun without obscuring release evidence."

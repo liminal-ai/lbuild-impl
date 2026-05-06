@@ -32,15 +32,17 @@ These are the primitives and process terms used throughout this skill. Read once
 
 **Quick fixer** — Role the CLI dispatches for small bounded corrections that don't justify a full implementor restart. Story-agnostic; receives a plain-language task description, no reading journey.
 
-**Epic verifier** — Role the CLI dispatches for full-epic verification at closeout. Fresh session.
+**Epic reviewer** — Role the CLI dispatches for fresh epic review at closeout. The configured reviewer set runs first; when more than one reviewer is configured, the runtime also performs an internal canonical reconciliation step before returning the final `epic-review` result.
 
-**Epic synthesizer** — Role the CLI dispatches to independently verify and consolidate epic-level findings into a single synthesis report.
+**Epic reverifier** — Role the CLI dispatches for retained follow-up epic review after epic-level fixes. Reverify decides what remains open, what is resolved, and whether the epic is ready for closeout.
+
+**Epic fixer** — Role the CLI dispatches for bounded epic-level fix work between epic review rounds.
 
 ## System layers
 
 **lbuild-impl CLI** — The package CLI that delivers this skill and executes bounded implementation operations. Executes one bounded operation per call and returns a structured result. Stateless across calls.
 
-**Bounded operation** — One discrete CLI call. The public set: `inspect`, `preflight`, `story-implement`, `story-continue`, `story-self-review`, `story-verify`, `quick-fix`, `epic-cleanup`, `epic-verify`, `epic-synthesize`.
+**Bounded operation** — One discrete CLI call. The public set: `inspect`, `preflight`, `story-implement`, `story-continue`, `story-self-review`, `story-verify`, `quick-fix`, `epic-review`, `epic-fix`, `epic-reverify`.
 
 **Provider** — The underlying CLI the lbuild-impl CLI invokes to run a role's prompt: Claude Code or Codex.
 
@@ -58,11 +60,11 @@ These are the primitives and process terms used throughout this skill. Read once
 
 ## Durable artifacts
 
-**`team-impl-log.md`** — The run's durable narrative record. Holds state transitions, story sequence, receipts, cumulative baselines, gate decisions, cleanup status, open risks. Your recovery surface.
+**`team-impl-log.md`** — The run's durable narrative record. Holds state transitions, story sequence, receipts, cumulative baselines, gate decisions, epic closeout status, open risks. Your recovery surface.
 
 **`impl-run.config.json`** — The machine-readable run configuration. Declares primary/secondary harnesses, role models, self-review passes. Validated by `preflight`.
 
-**`artifacts/`** — Directory at the spec-pack root where the CLI persists result envelopes. One subdirectory per story, plus `cleanup/` and `epic/`.
+**`artifacts/`** — Directory at the spec-pack root where the CLI persists result envelopes. One subdirectory per story, plus top-level `quick-fix/`, `fix/`, and `epic/` directories.
 
 **Result envelope** — The structured JSON every bounded operation returns: command, status, outcome, result, errors, warnings, artifacts, timestamps. Emitted on stdout and persisted under `artifacts/`.
 
@@ -70,7 +72,7 @@ These are the primitives and process terms used throughout this skill. Read once
 
 **Cumulative baseline** — The running total of tests in the project, updated after each story. A lower total after a later story indicates regression.
 
-**Cleanup artifact** — A markdown file you compile at stage 5 listing deferred and accepted-risk items carried from earlier stories. Reviewed with the human before dispatch.
+**Fix batch artifact** — A markdown file you curate for `epic-fix` when the current canonical epic review justifies one bounded epic-level fix round. It is compiled from the current epic review findings, not from a mandatory cleanup stage.
 
 ## Actions
 

@@ -15,9 +15,9 @@ Use `node bin/ls-impl-cli.cjs ...` as the portable invocation form across macOS,
 | `story-self-review` | The retained implementor session should run explicit same-session self-review passes. | `ready-for-verification`, `needs-followup-fix`, `needs-human-ruling`, `blocked` | Use the reviewed result to decide whether to verify, continue the implementor, or escalate. |
 | `story-verify` | The retained verifier session should start or continue for one story. | `pass`, `revise`, `block`, `needs-human-ruling` | Route fixes or move toward acceptance. |
 | `quick-fix` | A small, bounded fix should run without restarting the full implementor workflow. | `ready-for-verification`, `needs-more-routing`, `blocked` | Re-verify or route a larger follow-up path. |
-| `epic-cleanup` | Approved cleanup-only fixes should run before epic verification. | `cleaned`, `needs-more-cleanup`, `blocked` | Review the cleanup result before epic verification continues. |
-| `epic-verify` | All stories are accepted and cleanup is complete. | `pass`, `revise`, `block` | Gather the verifier batch for synthesis. |
-| `epic-synthesize` | Epic verifier results are available and need consolidation. | `ready-for-closeout`, `needs-fixes`, `needs-more-verification`, `blocked` | Run the final orchestrator-owned gate or route more work. |
+| `epic-fix` | A bounded epic fix batch is ready. | `cleaned`, `needs-more-fix`, `blocked` | Review the fix result and continue to `epic-reverify`. |
+| `epic-review` | All stories are accepted and epic closeout is starting. | `pass`, `revise`, `block` | Use the canonical review to route fixes or continue toward closeout. |
+| `epic-reverify` | Canonical open findings need follow-up review after fixes. | `ready-for-closeout`, `needs-fixes`, `needs-more-verification`, `blocked` | Run the final orchestrator-owned gate or route more work. |
 
 ## Routing Signals
 
@@ -26,12 +26,12 @@ Use `node bin/ls-impl-cli.cjs ...` as the portable invocation form across macOS,
 - If the retained verifier and implementor still disagree materially, keep both the verifier evidence and implementor response visible, route to retained verifier follow-up or human escalation, and do not pretend the disagreement is already resolved.
 - Use `story-verify` initial mode to start the retained verifier session, then use follow-up mode with the explicit verifier continuation handle plus the full implementor response to drive convergence.
 - Use `quick-fix` only for small mechanical corrections. Pass a plain-language task description and do not impose a story-aware structured result contract on that handoff.
-- Review the categorized cleanup batch with the human before dispatching `epic-cleanup`.
-- cleanup review remains outside the CLI.
-- Run `epic-verify` before final closeout.
+- Review the categorized fix batch with the human before dispatching `epic-fix`.
+- fix review remains outside the CLI.
+- Run `epic-review` before final closeout.
 - There is no direct closeout path from accepted stories.
-- Do not skip epic verification.
-- Do not treat epic verification as optional.
+- Do not skip epic review.
+- Do not treat epic review as optional.
 
 ## IO Contract
 
@@ -64,5 +64,5 @@ Use `node bin/ls-impl-cli.cjs ...` as the portable invocation form across macOS,
 
 ## Ownership Boundary
 
-The final story gate and final epic gate remain orchestrator-owned. The CLI can report readiness, verification findings, and cleanup outcomes, but it does not accept stories or close the epic by itself.
-The final epic gate stays outside the CLI even when synthesis reports `ready-for-closeout`.
+The final story gate and final epic gate remain orchestrator-owned. The CLI can report readiness, verification findings, and fix outcomes, but it does not accept stories or close the epic by itself.
+The final epic gate stays outside the CLI even when reverify reports `ready-for-closeout`.

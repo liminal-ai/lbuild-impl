@@ -16,9 +16,9 @@ import {
 	writeTextFile,
 } from "../../support/test-helpers";
 
-interface EpicCleanupPayload {
-	outcome: "cleaned" | "needs-more-cleanup" | "blocked";
-	cleanupBatchPath: string;
+interface EpicFixPayload {
+	outcome: "cleaned" | "needs-more-fix" | "blocked";
+	fixBatchPath: string;
 	filesChanged: string[];
 	changeSummary: string;
 	gatesRun: Array<{ command: string; result: "pass" | "fail" | "not-run" }>;
@@ -49,36 +49,36 @@ async function createEpicSpecPack(scope: string): Promise<string> {
 	return specPackRoot;
 }
 
-function providerResult(sessionId: string, payload: EpicCleanupPayload) {
+function providerResult(sessionId: string, payload: EpicFixPayload) {
 	return JSON.stringify({
 		sessionId,
 		result: payload,
 	});
 }
 
-async function writeCleanupBatch(
+async function writeFixBatch(
 	specPackRoot: string,
 	fileName: string,
 	body: string,
 ): Promise<string> {
-	const cleanupBatchPath = join(specPackRoot, "artifacts", "cleanup", fileName);
-	await writeTextFile(cleanupBatchPath, body);
-	return cleanupBatchPath;
+	const fixBatchPath = join(specPackRoot, "artifacts", "fix", fileName);
+	await writeTextFile(fixBatchPath, body);
+	return fixBatchPath;
 }
 
-function baseCleanupPayload(
-	cleanupBatchPath: string,
-	overrides: Partial<EpicCleanupPayload> = {},
-): EpicCleanupPayload {
-	const payload: EpicCleanupPayload = {
+function baseFixPayload(
+	fixBatchPath: string,
+	overrides: Partial<EpicFixPayload> = {},
+): EpicFixPayload {
+	const payload: EpicFixPayload = {
 		outcome: "cleaned",
-		cleanupBatchPath,
+		fixBatchPath,
 		filesChanged: [
 			"src/references/claude-impl-process-playbook.md",
 			"src/references/claude-impl-cli-operations.md",
 		],
 		changeSummary:
-			"Applied the approved cleanup-only closeout corrections before epic verification.",
+			"Applied the approved fix-only closeout corrections before epic verification.",
 		gatesRun: [
 			{
 				command: "bun run green-verify",
@@ -87,7 +87,7 @@ function baseCleanupPayload(
 		],
 		unresolvedConcerns: [],
 		recommendedNextStep:
-			"Review the cleanup result, then launch epic verification.",
+			"Review the fix result, then launch epic verification.",
 	};
 
 	return {
@@ -99,28 +99,28 @@ function baseCleanupPayload(
 	};
 }
 
-test("TC-7.1a consumes a durable cleanup artifact and returns the structured cleanup result before epic verification", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-cleanup-contract");
+test("TC-7.1a consumes a durable fix artifact and returns the structured fix result before epic verification", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-fix-contract");
 	await writeRunConfig(specPackRoot, createRunConfig());
-	const cleanupBatchPath = await writeCleanupBatch(
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-batch.md",
+		"fix-batch.md",
 		[
-			"# Cleanup Batch",
+			"# Fix Batch",
 			"",
-			"- APPROVED: tighten the closeout docs so cleanup precedes epic verification.",
-			"- APPROVED: wire the synthesis command into the final closeout sequence.",
+			"- APPROVED: tighten the closeout docs so fix precedes epic verification.",
+			"- APPROVED: wire the reverify command into the final closeout sequence.",
 		].join("\n"),
 	);
-	const providerBinDir = await createTempDir("epic-cleanup-contract-provider");
+	const providerBinDir = await createTempDir("epic-fix-contract-provider");
 	const { env, logPath } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-cleanup-001",
-					baseCleanupPayload(cleanupBatchPath),
+					"codex-epic-fix-001",
+					baseFixPayload(fixBatchPath),
 				),
 			},
 		],
@@ -128,11 +128,11 @@ test("TC-7.1a consumes a durable cleanup artifact and returns the structured cle
 
 	const run = await runSourceCli(
 		[
-			"epic-cleanup",
+			"epic-fix",
 			"--spec-pack-root",
 			specPackRoot,
-			"--cleanup-batch",
-			cleanupBatchPath,
+			"--fix-batch",
+			fixBatchPath,
 			"--json",
 		],
 		{
@@ -146,15 +146,25 @@ test("TC-7.1a consumes a durable cleanup artifact and returns the structured cle
 	expect(run.exitCode).toBe(0);
 
 	const envelope = parseJsonOutput(run.stdout);
-	expect(envelope.command).toBe("epic-cleanup");
+	expect(envelope.command).toBe("epic-fix");
 	expect(envelope.outcome).toBe("cleaned");
-	expect(envelope.result.cleanupBatchPath).toBe(cleanupBatchPath);
+	expect(envelope.result).toMatchObject({
+		provider: "codex",
+		sessionId: "codex-epic-fix-001",
+		mode: "initial",
+		continuation: {
+			provider: "codex",
+			sessionId: "codex-epic-fix-001",
+			operation: "epic-fix",
+		},
+	});
+	expect(envelope.result.fixBatchPath).toBe(fixBatchPath);
 	expect(envelope.result.filesChanged).toEqual(
 		expect.arrayContaining(["src/references/claude-impl-process-playbook.md"]),
 	);
 
 	const artifactPath = envelope.artifacts[0].path as string;
-	expect(artifactPath).toContain("/artifacts/cleanup/001-cleanup-result.json");
+	expect(artifactPath).toContain("/artifacts/fix/001-fix-result.json");
 	const persisted = JSON.parse(await Bun.file(artifactPath).text());
 	expect(persisted).toEqual(envelope);
 	const progressPaths = buildRuntimeProgressPaths(artifactPath);
@@ -186,30 +196,101 @@ test("TC-7.1a consumes a durable cleanup artifact and returns the structured cle
 	expect(invocations[0]?.args).not.toContain("resume");
 });
 
-test("treats a reviewed cleanup batch with zero approved items as a cleaned no-op result", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-cleanup-noop");
+test("continues epic-fix with the retained provider session", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-fix-retained");
 	await writeRunConfig(specPackRoot, createRunConfig());
-	const cleanupBatchPath = await writeCleanupBatch(
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-noop.md",
+		"fix-batch.md",
+		["# Fix Batch", "", "- APPROVED: apply the retained follow-up fix."].join(
+			"\n",
+		),
+	);
+	const providerBinDir = await createTempDir("epic-fix-retained-provider");
+	const { env, logPath } = await writeFakeProviderExecutable({
+		binDir: providerBinDir,
+		provider: "codex",
+		responses: [
+			{
+				stdout: providerResult(
+					"codex-epic-fix-retained-001",
+					baseFixPayload(fixBatchPath),
+				),
+			},
+			{
+				stdout: providerResult(
+					"codex-epic-fix-retained-001",
+					baseFixPayload(fixBatchPath),
+				),
+			},
+		],
+	});
+
+	const first = await runSourceCli(
 		[
-			"# Cleanup Batch",
+			"epic-fix",
+			"--spec-pack-root",
+			specPackRoot,
+			"--fix-batch",
+			fixBatchPath,
+			"--json",
+		],
+		{ env: { PATH: `${providerBinDir}:${process.env.PATH ?? ""}`, ...env } },
+	);
+	const firstEnvelope = parseJsonOutput(first.stdout);
+	const second = await runSourceCli(
+		[
+			"epic-fix",
+			"--spec-pack-root",
+			specPackRoot,
+			"--fix-batch",
+			fixBatchPath,
+			"--provider",
+			firstEnvelope.result.continuation.provider,
+			"--session-id",
+			firstEnvelope.result.continuation.sessionId,
+			"--json",
+		],
+		{ env: { PATH: `${providerBinDir}:${process.env.PATH ?? ""}`, ...env } },
+	);
+
+	expect(second.exitCode).toBe(0);
+	const secondEnvelope = parseJsonOutput(second.stdout);
+	expect(secondEnvelope.result.mode).toBe("followup");
+	expect(secondEnvelope.result.continuation).toEqual(
+		firstEnvelope.result.continuation,
+	);
+	const invocations = await readJsonLines<{ args: string[] }>(logPath);
+	expect(invocations).toHaveLength(2);
+	expect(invocations[0]?.args).not.toContain("resume");
+	expect(invocations[1]?.args).toContain("resume");
+	expect(invocations[1]?.args).toContain("codex-epic-fix-retained-001");
+});
+
+test("treats a reviewed fix batch with zero approved items as a cleaned no-op result", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-fix-noop");
+	await writeRunConfig(specPackRoot, createRunConfig());
+	const fixBatchPath = await writeFixBatch(
+		specPackRoot,
+		"fix-noop.md",
+		[
+			"# Fix Batch",
 			"",
-			"- REVIEWED: no approved cleanup corrections remain before epic verification.",
+			"- REVIEWED: no approved fix corrections remain before epic verification.",
 		].join("\n"),
 	);
-	const providerBinDir = await createTempDir("epic-cleanup-noop-provider");
+	const providerBinDir = await createTempDir("epic-fix-noop-provider");
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-cleanup-002",
-					baseCleanupPayload(cleanupBatchPath, {
+					"codex-epic-fix-002",
+					baseFixPayload(fixBatchPath, {
 						filesChanged: [],
 						changeSummary:
-							"No approved cleanup corrections remained, so the cleanup pass was a no-op.",
+							"No approved fix corrections remained, so the fix pass was a no-op.",
 					}),
 				),
 			},
@@ -218,11 +299,11 @@ test("treats a reviewed cleanup batch with zero approved items as a cleaned no-o
 
 	const run = await runSourceCli(
 		[
-			"epic-cleanup",
+			"epic-fix",
 			"--spec-pack-root",
 			specPackRoot,
-			"--cleanup-batch",
-			cleanupBatchPath,
+			"--fix-batch",
+			fixBatchPath,
 			"--json",
 		],
 		{
@@ -250,24 +331,22 @@ test("treats a reviewed cleanup batch with zero approved items as a cleaned no-o
 	]);
 });
 
-test("does not treat negated or superseded APPROVED text as actionable cleanup work", async () => {
-	const specPackRoot = await createEpicSpecPack(
-		"epic-cleanup-negated-approved",
-	);
+test("does not treat negated or superseded APPROVED text as actionable fix work", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-fix-negated-approved");
 	await writeRunConfig(specPackRoot, createRunConfig());
-	const cleanupBatchPath = await writeCleanupBatch(
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-negated-approved.md",
+		"fix-negated-approved.md",
 		[
-			"# Cleanup Batch",
+			"# Fix Batch",
 			"",
-			"- NOT APPROVED: do not widen the cleanup scope.",
+			"- NOT APPROVED: do not widen the fix scope.",
 			"- pre-APPROVED drafts are not actionable.",
 			"- previously APPROVED but superseded by later review.",
 		].join("\n"),
 	);
 	const providerBinDir = await createTempDir(
-		"epic-cleanup-negated-approved-provider",
+		"epic-fix-negated-approved-provider",
 	);
 	const { env, logPath } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
@@ -277,11 +356,11 @@ test("does not treat negated or superseded APPROVED text as actionable cleanup w
 
 	const run = await runSourceCli(
 		[
-			"epic-cleanup",
+			"epic-fix",
 			"--spec-pack-root",
 			specPackRoot,
-			"--cleanup-batch",
-			cleanupBatchPath,
+			"--fix-batch",
+			fixBatchPath,
 			"--json",
 		],
 		{
@@ -302,21 +381,21 @@ test("does not treat negated or superseded APPROVED text as actionable cleanup w
 });
 
 test("still treats the batch as actionable when a real approved item appears alongside plain-text not approved notes", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-cleanup-mixed-approved");
+	const specPackRoot = await createEpicSpecPack("epic-fix-mixed-approved");
 	await writeRunConfig(specPackRoot, createRunConfig());
-	const cleanupBatchPath = await writeCleanupBatch(
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-mixed-approved.md",
+		"fix-mixed-approved.md",
 		[
-			"# Cleanup Batch",
+			"# Fix Batch",
 			"",
-			"- APPROVED: apply the bounded cleanup correction.",
+			"- APPROVED: apply the bounded fix correction.",
 			"",
 			"Reviewer note: this unrelated idea is not approved for the current pass.",
 		].join("\n"),
 	);
 	const providerBinDir = await createTempDir(
-		"epic-cleanup-mixed-approved-provider",
+		"epic-fix-mixed-approved-provider",
 	);
 	const { env, logPath } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
@@ -324,8 +403,8 @@ test("still treats the batch as actionable when a real approved item appears alo
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-cleanup-mixed-001",
-					baseCleanupPayload(cleanupBatchPath),
+					"codex-epic-fix-mixed-001",
+					baseFixPayload(fixBatchPath),
 				),
 			},
 		],
@@ -333,11 +412,11 @@ test("still treats the batch as actionable when a real approved item appears alo
 
 	const run = await runSourceCli(
 		[
-			"epic-cleanup",
+			"epic-fix",
 			"--spec-pack-root",
 			specPackRoot,
-			"--cleanup-batch",
-			cleanupBatchPath,
+			"--fix-batch",
+			fixBatchPath,
 			"--json",
 		],
 		{
@@ -357,20 +436,20 @@ test("still treats the batch as actionable when a real approved item appears alo
 	expect(invocations).toHaveLength(1);
 });
 
-test("blocks epic-cleanup with INVALID_SPEC_PACK when the spec-pack root is outside any git repo", async () => {
-	const specPackRoot = await createExternalSpecPack("epic-cleanup-no-git-repo");
-	const cleanupBatchPath = await writeCleanupBatch(
+test("blocks epic-fix with INVALID_SPEC_PACK when the spec-pack root is outside any git repo", async () => {
+	const specPackRoot = await createExternalSpecPack("epic-fix-no-git-repo");
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-batch.md",
-		"# Cleanup Batch\n\n- APPROVED: apply the bounded cleanup correction.\n",
+		"fix-batch.md",
+		"# Fix Batch\n\n- APPROVED: apply the bounded fix correction.\n",
 	);
 
 	const run = await runSourceCli([
-		"epic-cleanup",
+		"epic-fix",
 		"--spec-pack-root",
 		specPackRoot,
-		"--cleanup-batch",
-		cleanupBatchPath,
+		"--fix-batch",
+		fixBatchPath,
 		"--json",
 	]);
 
@@ -388,28 +467,26 @@ test("blocks epic-cleanup with INVALID_SPEC_PACK when the spec-pack root is outs
 	);
 });
 
-test("blocks epic-cleanup when the structured cleanup payload includes an unknown top-level key", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-cleanup-strict-payload");
+test("blocks epic-fix when the structured fix payload includes an unknown top-level key", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-fix-strict-payload");
 	await writeRunConfig(specPackRoot, createRunConfig());
-	const cleanupBatchPath = await writeCleanupBatch(
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-strict.md",
-		[
-			"# Cleanup Batch",
-			"",
-			"- APPROVED: apply the bounded cleanup correction.",
-		].join("\n"),
+		"fix-strict.md",
+		["# Fix Batch", "", "- APPROVED: apply the bounded fix correction."].join(
+			"\n",
+		),
 	);
-	const providerBinDir = await createTempDir("epic-cleanup-strict-provider");
+	const providerBinDir = await createTempDir("epic-fix-strict-provider");
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
 				stdout: JSON.stringify({
-					sessionId: "codex-epic-cleanup-strict-001",
+					sessionId: "codex-epic-fix-strict-001",
 					result: {
-						...baseCleanupPayload(cleanupBatchPath),
+						...baseFixPayload(fixBatchPath),
 						extraField: "drift",
 					},
 				}),
@@ -419,11 +496,11 @@ test("blocks epic-cleanup when the structured cleanup payload includes an unknow
 
 	const run = await runSourceCli(
 		[
-			"epic-cleanup",
+			"epic-fix",
 			"--spec-pack-root",
 			specPackRoot,
-			"--cleanup-batch",
-			cleanupBatchPath,
+			"--fix-batch",
+			fixBatchPath,
 			"--json",
 		],
 		{
@@ -449,35 +526,33 @@ test("blocks epic-cleanup when the structured cleanup payload includes an unknow
 	);
 });
 
-test("returns exit code 2 when epic-cleanup reports needs-more-cleanup", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-cleanup-needs-more");
+test("returns exit code 2 when epic-fix reports needs-more-fix", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-fix-needs-more");
 	await writeRunConfig(specPackRoot, createRunConfig());
-	const cleanupBatchPath = await writeCleanupBatch(
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-needs-more.md",
+		"fix-needs-more.md",
 		[
-			"# Cleanup Batch",
+			"# Fix Batch",
 			"",
 			"- APPROVED: apply the closeout corrections in one bounded pass.",
 		].join("\n"),
 	);
-	const providerBinDir = await createTempDir(
-		"epic-cleanup-needs-more-provider",
-	);
+	const providerBinDir = await createTempDir("epic-fix-needs-more-provider");
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-cleanup-003",
-					baseCleanupPayload(cleanupBatchPath, {
-						outcome: "needs-more-cleanup",
+					"codex-epic-fix-003",
+					baseFixPayload(fixBatchPath, {
+						outcome: "needs-more-fix",
 						unresolvedConcerns: [
-							"One approved cleanup item still needs a follow-up pass.",
+							"One approved fix item still needs a follow-up pass.",
 						],
 						recommendedNextStep:
-							"Review the remaining cleanup concern, then run another cleanup pass.",
+							"Review the remaining fix concern, then run another fix pass.",
 					}),
 				),
 			},
@@ -486,11 +561,11 @@ test("returns exit code 2 when epic-cleanup reports needs-more-cleanup", async (
 
 	const run = await runSourceCli(
 		[
-			"epic-cleanup",
+			"epic-fix",
 			"--spec-pack-root",
 			specPackRoot,
-			"--cleanup-batch",
-			cleanupBatchPath,
+			"--fix-batch",
+			fixBatchPath,
 			"--json",
 		],
 		{
@@ -504,31 +579,31 @@ test("returns exit code 2 when epic-cleanup reports needs-more-cleanup", async (
 	expect(run.exitCode).toBe(0);
 
 	const envelope = parseJsonOutput(run.stdout);
-	expect(envelope.outcome).toBe("needs-more-cleanup");
+	expect(envelope.outcome).toBe("needs-more-fix");
 	expect(envelope.result.unresolvedConcerns).toEqual([
-		"One approved cleanup item still needs a follow-up pass.",
+		"One approved fix item still needs a follow-up pass.",
 	]);
 });
 
-test("returns exit code 3 when epic-cleanup is blocked by provider execution failure", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-cleanup-blocked");
+test("returns exit code 3 when epic-fix is blocked by provider execution failure", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-fix-blocked");
 	await writeRunConfig(specPackRoot, createRunConfig());
-	const cleanupBatchPath = await writeCleanupBatch(
+	const fixBatchPath = await writeFixBatch(
 		specPackRoot,
-		"cleanup-blocked.md",
+		"fix-blocked.md",
 		[
-			"# Cleanup Batch",
+			"# Fix Batch",
 			"",
-			"- APPROVED: apply the final cleanup corrections before epic verification.",
+			"- APPROVED: apply the final fix corrections before epic verification.",
 		].join("\n"),
 	);
-	const providerBinDir = await createTempDir("epic-cleanup-blocked-provider");
+	const providerBinDir = await createTempDir("epic-fix-blocked-provider");
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
-				stderr: "cleanup provider failed before producing JSON output",
+				stderr: "fix provider failed before producing JSON output",
 				exitCode: 1,
 			},
 		],
@@ -536,11 +611,11 @@ test("returns exit code 3 when epic-cleanup is blocked by provider execution fai
 
 	const run = await runSourceCli(
 		[
-			"epic-cleanup",
+			"epic-fix",
 			"--spec-pack-root",
 			specPackRoot,
-			"--cleanup-batch",
-			cleanupBatchPath,
+			"--fix-batch",
+			fixBatchPath,
 			"--json",
 		],
 		{

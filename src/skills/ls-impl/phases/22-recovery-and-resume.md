@@ -21,8 +21,8 @@ Read `State` from the log and route accordingly:
 | `SETUP` | `setup/12-run-setup.md`, step 2 | Initialization was interrupted; continue authoring config and running preflight |
 | `BETWEEN_STORIES` | `phases/20-story-cycle.md`, step 1 | Start the next story per the log's `Current Story` |
 | `STORY_ACTIVE` | `phases/20-story-cycle.md`, sub-route by `Current Phase` (next table) | One story is mid-cycle; replay from the last completed checkpoint |
-| `PRE_EPIC_VERIFY` | `phases/23-cleanup-and-closeout.md`, step 1 | All stories accepted; cleanup not yet started |
-| `EPIC_VERIFY_ACTIVE` | `phases/23-cleanup-and-closeout.md`, sub-route by `Current Phase` (next table) | Cleanup, epic verifier batch, or synthesis mid-flight |
+| `PRE_EPIC_VERIFY` | `phases/23-cleanup-and-closeout.md`, step 1 | All stories accepted; epic closeout has not started yet |
+| `EPIC_VERIFY_ACTIVE` | `phases/23-cleanup-and-closeout.md`, sub-route by `Current Phase` (next table) | Epic review, epic fix, or epic reverify is mid-flight |
 | `COMPLETE` | No action | Run is finished |
 | `FAILED` | Escalate to user | Do not resume automatically; surface the recorded failure reason |
 
@@ -41,13 +41,10 @@ Read `State` from the log and route accordingly:
 
 | Current Phase | Check | Action |
 |---|---|---|
-| `cleanup-compile` | Does a cleanup artifact exist under `artifacts/cleanup/`? | If yes → proceed to user review. If no → re-compile. |
-| `cleanup-review` | Has the user approved the batch? | If yes → proceed to dispatch. If no → re-present. |
-| `cleanup-dispatch` | Does an `epic-cleanup` result artifact exist? | If yes → proceed to cleanup-verify. If no → re-run. |
-| `cleanup-verify` | Was the story gate run on the cleaned state? | If yes → proceed to `epic-verify`. If no → run the gate. |
-| `epic-verify` | Do `epic-verify` result artifacts exist? | If yes → proceed to synthesis. If no → re-run. |
-| `epic-synthesize` | Does the synthesis result artifact exist? | If yes → proceed to the final epic gate. If no → re-run. |
-| `epic-gate` | Was the epic gate run and its result recorded? | If yes → set `State: COMPLETE`. If no → run the gate. |
+| `epic-review` | Does an `epic-review` result artifact exist? | If yes → route epic fixes or proceed to `epic-reverify`. If no → re-run. |
+| `epic-fix` | Does an `epic-fix` result artifact exist? | If yes → proceed to `epic-reverify`. If no → re-run. |
+| `epic-reverify` | Does an `epic-reverify` result artifact exist? | If yes → proceed to the epic gate or another fix/review round. If no → re-run. |
+| `epic-gate` | Was the epic gate run on the converged candidate state and its result recorded? | If yes → set `State: COMPLETE`. If no → run the gate. |
 
 ## Replay rules
 

@@ -23,7 +23,7 @@ For normal story work, `story-orchestrate` is the happy path and it requires an 
 
 ## Role defaults
 
-Each role gets a `secondary_harness`, `model`, and `reasoning_effort`. The epic verifier rows (`epic_verifier_1`, `epic_verifier_2`) correspond to entries in the `epic_verifiers` array with labels `epic-verifier-1` and `epic-verifier-2`; all other rows are top-level config keys.
+Each role gets a `secondary_harness`, `model`, and `reasoning_effort`. The epic reviewer rows (`epic_reviewer_1`, `epic_reviewer_2`) correspond to entries in the `epic_verifiers` array with labels such as `epic-reviewer-1` and `epic-reviewer-2`; all other rows are top-level config keys.
 
 `secondary_harness: "none"` means the role runs on the built-in Claude-backed provider path. That is a provider choice, not a statement about which caller harness is reading the CLI output.
 
@@ -35,9 +35,9 @@ Each role gets a `secondary_harness`, `model`, and `reasoning_effort`. The epic 
 | `story_implementor` | `codex` | `gpt-5.4` | `high` |
 | `quick_fixer` | `codex` | `gpt-5.4` | `high` |
 | `story_verifier` | `codex` | `gpt-5.4` | `xhigh` |
-| `epic_verifier_1` | `codex` | `gpt-5.4` | `xhigh` |
-| `epic_verifier_2` | `none` | `claude-sonnet` | `high` |
-| `epic_synthesizer` | `codex` | `gpt-5.4` | `xhigh` |
+| `epic_reviewer_1` | `codex` | `gpt-5.4` | `xhigh` |
+| `epic_reviewer_2` | `none` | `claude-sonnet` | `high` |
+| `epic_reverifier` | `codex` | `gpt-5.4` | `xhigh` |
 
 ### Neither available
 
@@ -49,9 +49,9 @@ All roles fall back to the primary harness. Record the degraded-diversity condit
 | `story_implementor` | `none` | `claude-sonnet` | `high` |
 | `quick_fixer` | `none` | `claude-sonnet` | `high` |
 | `story_verifier` | `none` | `claude-sonnet` | `xhigh` |
-| `epic_verifier_1` | `none` | `claude-sonnet` | `xhigh` |
-| `epic_verifier_2` | `none` | `claude-sonnet` | `high` |
-| `epic_synthesizer` | `none` | `claude-sonnet` | `xhigh` |
+| `epic_reviewer_1` | `none` | `claude-sonnet` | `xhigh` |
+| `epic_reviewer_2` | `none` | `claude-sonnet` | `high` |
+| `epic_reverifier` | `none` | `claude-sonnet` | `xhigh` |
 
 ## Self-review passes
 
@@ -80,15 +80,18 @@ Defaults to 3. Do not change unless the user asks.
     "story_self_review_silence_timeout_ms": 480000,
     "story_verifier_silence_timeout_ms": 360000,
     "quick_fixer_silence_timeout_ms": 300000,
-    "epic_cleanup_silence_timeout_ms": 480000,
-    "epic_verifier_silence_timeout_ms": 600000,
-    "epic_synthesizer_silence_timeout_ms": 600000
+    "epic_fixer_ms": 3600000,
+    "epic_fixer_silence_timeout_ms": 480000,
+    "epic_reviewer_ms": 3600000,
+    "epic_reviewer_silence_timeout_ms": 600000,
+    "epic_reverifier_ms": 3600000,
+    "epic_reverifier_silence_timeout_ms": 600000
   },
   "epic_verifiers": [
-    { "label": "epic-verifier-1", "secondary_harness": "...", "model": "...", "reasoning_effort": "..." },
-    { "label": "epic-verifier-2", "secondary_harness": "...", "model": "...", "reasoning_effort": "..." }
+    { "label": "epic-reviewer-1", "secondary_harness": "...", "model": "...", "reasoning_effort": "..." },
+    { "label": "epic-reviewer-2", "secondary_harness": "...", "model": "...", "reasoning_effort": "..." }
   ],
-  "epic_synthesizer": { "secondary_harness": "...", "model": "...", "reasoning_effort": "..." }
+  "epic_reverifier": { "secondary_harness": "...", "model": "...", "reasoning_effort": "..." }
 }
 ```
 

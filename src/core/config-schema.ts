@@ -63,12 +63,12 @@ export const runTimeoutsSchema = z
 		story_implementor_silence_timeout_ms: z.number().int().positive(),
 		story_verifier_ms: z.number().int().positive(),
 		story_verifier_silence_timeout_ms: z.number().int().positive(),
-		epic_cleanup_ms: z.number().int().positive(),
-		epic_cleanup_silence_timeout_ms: z.number().int().positive(),
-		epic_verifier_ms: z.number().int().positive(),
-		epic_verifier_silence_timeout_ms: z.number().int().positive(),
-		epic_synthesizer_ms: z.number().int().positive(),
-		epic_synthesizer_silence_timeout_ms: z.number().int().positive(),
+		epic_fixer_ms: z.number().int().positive(),
+		epic_fixer_silence_timeout_ms: z.number().int().positive(),
+		epic_reviewer_ms: z.number().int().positive(),
+		epic_reviewer_silence_timeout_ms: z.number().int().positive(),
+		epic_reverifier_ms: z.number().int().positive(),
+		epic_reverifier_silence_timeout_ms: z.number().int().positive(),
 		quick_fixer_ms: z.number().int().positive(),
 		quick_fixer_silence_timeout_ms: z.number().int().positive(),
 		story_self_review_silence_timeout_ms: z.number().int().positive(),
@@ -84,12 +84,12 @@ export const DEFAULT_RUN_TIMEOUTS = {
 	story_implementor_silence_timeout_ms: 600_000,
 	story_verifier_ms: 3_600_000,
 	story_verifier_silence_timeout_ms: 360_000,
-	epic_cleanup_ms: 3_600_000,
-	epic_cleanup_silence_timeout_ms: 480_000,
-	epic_verifier_ms: 3_600_000,
-	epic_verifier_silence_timeout_ms: 600_000,
-	epic_synthesizer_ms: 3_600_000,
-	epic_synthesizer_silence_timeout_ms: 600_000,
+	epic_fixer_ms: 3_600_000,
+	epic_fixer_silence_timeout_ms: 480_000,
+	epic_reviewer_ms: 3_600_000,
+	epic_reviewer_silence_timeout_ms: 600_000,
+	epic_reverifier_ms: 3_600_000,
+	epic_reverifier_silence_timeout_ms: 600_000,
 	quick_fixer_ms: 1_800_000,
 	quick_fixer_silence_timeout_ms: 300_000,
 	story_self_review_silence_timeout_ms: 480_000,
@@ -145,7 +145,7 @@ const implRunConfigCanonicalSchema = z
 			})
 			.strict(),
 		epic_verifiers: z.array(epicVerifierAssignmentSchema).min(1),
-		epic_synthesizer: roleAssignmentSchema,
+		epic_reverifier: roleAssignmentSchema,
 		caller_harness: callerHarnessConfigRecordSchema.optional(),
 		verification_gates: verificationGatesConfigSchema.optional(),
 		timeouts: runTimeoutsSchema.optional(),
@@ -162,14 +162,14 @@ const implRunConfigCanonicalSchema = z
 		validateRoleEffort(value.story_implementor, ["story_implementor"], ctx);
 		validateRoleEffort(value.quick_fixer, ["quick_fixer"], ctx);
 		validateRoleEffort(value.story_verifier, ["story_verifier"], ctx);
-		validateRoleEffort(value.epic_synthesizer, ["epic_synthesizer"], ctx);
+		validateRoleEffort(value.epic_reverifier, ["epic_reverifier"], ctx);
 
 		const seenLabels = new Set<string>();
 		for (const [index, verifier] of value.epic_verifiers.entries()) {
 			if (seenLabels.has(verifier.label)) {
 				ctx.addIssue({
 					code: z.ZodIssueCode.custom,
-					message: "Duplicate epic verifier label",
+					message: "Duplicate epic reviewer label",
 					path: ["epic_verifiers", index, "label"],
 				});
 			}
@@ -197,7 +197,7 @@ export const implRunConfigSchema = z
 			})
 			.strict(),
 		epic_verifiers: z.array(epicVerifierAssignmentSchema).min(1),
-		epic_synthesizer: roleAssignmentSchema,
+		epic_reverifier: roleAssignmentSchema,
 		caller_harness: callerHarnessConfigRecordSchema.optional(),
 		verification_gates: verificationGatesConfigSchema.optional(),
 		timeouts: runTimeoutsSchema.optional(),

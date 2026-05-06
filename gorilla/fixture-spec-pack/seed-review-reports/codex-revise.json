@@ -3,15 +3,15 @@
   "outcome": "revise",
   "provider": "codex",
   "model": "gpt-5.4",
-  "reviewerLabel": "epic-verifier-codex",
+  "reviewerLabel": "epic-reviewer-codex",
   "crossStoryFindings": [
     "The seeded evidence stays readable, but release-diff polish still depends on keeping the fixture copy compact."
   ],
   "architectureFindings": [
-    "Verification and cleanup artifacts live beside the tiny target project, which keeps closeout inspection fast."
+    "Verification and fix artifacts live beside the tiny target project, which keeps closeout inspection fast."
   ],
   "epicCoverageAssessment": [
-    "Flow 3 is covered, but the fixture should keep future copy-only cleanups tightly bounded to target-codebase files."
+    "Flow 3 is covered, but the fixture should keep future copy-only fixes tightly bounded to target-codebase files."
   ],
   "mockOrShimAuditFindings": [
     "No shim drift was found outside the dedicated stall scenario."
@@ -21,7 +21,7 @@
     {
       "id": "EV-SUMMARY-001",
       "severity": "observation",
-      "title": "Future cleanups can normalize habitat wording if the sample set grows",
+      "title": "Future fixes can normalize habitat wording if the sample set grows",
       "evidence": "The current sample reads clearly, but additional animals would benefit from consistent habitat phrasing.",
       "affectedFiles": [
         "target-codebase/src/summary.js",

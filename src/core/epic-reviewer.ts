@@ -25,8 +25,10 @@ import {
 import {
 	aggregateEpicVerifierBatchOutcome,
 	type CliError,
+	type EpicCanonicalReview,
 	type EpicVerifierBatchResult,
 	type EpicVerifierResult,
+	epicCanonicalReviewSchema,
 	epicVerifierResultSchema,
 } from "./result-contracts";
 import {
@@ -67,9 +69,12 @@ interface PreparedEpicContext {
 	};
 	providerCwd: string;
 	verifiers: PreparedVerifier[];
+	reconciler: PreparedVerifier;
 	timeoutMs: number;
+	reconcileTimeoutMs: number;
 	startupTimeoutMs: number;
 	silenceTimeoutMs: number;
+	reconcileSilenceTimeoutMs: number;
 	callerHarnessConfig?: CallerHarnessConfigRecord;
 }
 
@@ -85,7 +90,11 @@ interface VerifierExecutionFailure {
 	errors: CliError[];
 }
 
-export interface EpicVerifyWorkflowResult {
+interface ReconciliationExecutionSuccess {
+	canonicalReview: EpicCanonicalReview;
+}
+
+export interface EpicReviewWorkflowResult {
 	outcome: "pass" | "revise" | "block";
 	result?: EpicVerifierBatchResult;
 	errors: CliError[];
@@ -112,7 +121,7 @@ function providerForHarness(harness: "codex" | "none"): ProviderName {
 	return harness;
 }
 
-async function prepareEpicVerifyContext(input: {
+async function prepareEpicReviewContext(input: {
 	specPackRoot: string;
 	configPath?: string;
 }): Promise<PreparedEpicContext | WorkflowFailure> {
@@ -122,7 +131,7 @@ async function prepareEpicVerifyContext(input: {
 			errors: [
 				blockedError(
 					"INVALID_SPEC_PACK",
-					"Spec-pack inspection must be ready before epic verification can start.",
+					"Spec-pack inspection must be ready before epic review can start.",
 					inspection.blockers.join("; ") || inspection.notes.join("; "),
 				),
 			],
@@ -144,7 +153,7 @@ async function prepareEpicVerifyContext(input: {
 				: [
 						blockedError(
 							"VERIFICATION_GATE_UNRESOLVED",
-							"Verification gates must be resolved before epic verification can start.",
+							"Verification gates must be resolved before epic review can start.",
 						),
 					],
 		};
@@ -169,10 +178,19 @@ async function prepareEpicVerifyContext(input: {
 			model: verifier.model,
 			reasoningEffort: verifier.reasoning_effort,
 		})),
-		timeoutMs: resolveRunTimeouts(config).epic_verifier_ms,
+		reconciler: {
+			label: "epic-review-reconciler",
+			provider: providerForHarness(config.epic_reverifier.secondary_harness),
+			model: config.epic_reverifier.model,
+			reasoningEffort: config.epic_reverifier.reasoning_effort,
+		},
+		timeoutMs: resolveRunTimeouts(config).epic_reviewer_ms,
+		reconcileTimeoutMs: resolveRunTimeouts(config).epic_reverifier_ms,
 		startupTimeoutMs: resolveRunTimeouts(config).provider_startup_timeout_ms,
 		silenceTimeoutMs:
-			resolveRunTimeouts(config).epic_verifier_silence_timeout_ms,
+			resolveRunTimeouts(config).epic_reviewer_silence_timeout_ms,
+		reconcileSilenceTimeoutMs:
+			resolveRunTimeouts(config).epic_reverifier_silence_timeout_ms,
 		callerHarnessConfig: config.caller_harness,
 	};
 }
@@ -222,6 +240,64 @@ function executionFailureError(input: {
 		`Provider execution failed for ${input.provider}.`,
 		input.stderr,
 	);
+}
+
+async function executeReconciliation(input: {
+	provider: ProviderName;
+	cwd: string;
+	model: string;
+	reasoningEffort: string;
+	prompt: string;
+	env?: Record<string, string | undefined>;
+	timeoutMs: number;
+	startupTimeoutMs?: number;
+	silenceTimeoutMs?: number;
+	streamOutputPaths?: ProviderStreamOutputPaths;
+	lifecycleCallback?: (event: ProviderLifecycleEvent) => void | Promise<void>;
+}): Promise<ReconciliationExecutionSuccess | VerifierExecutionFailure> {
+	const adapter = createProviderAdapter(input.provider, {
+		env: input.env,
+	});
+	const execution = await adapter.execute({
+		prompt: input.prompt,
+		cwd: input.cwd,
+		model: input.model,
+		reasoningEffort: input.reasoningEffort,
+		timeoutMs: input.timeoutMs,
+		startupTimeoutMs: input.startupTimeoutMs,
+		silenceTimeoutMs: input.silenceTimeoutMs,
+		resultSchema: epicCanonicalReviewSchema,
+		streamOutputPaths: input.streamOutputPaths,
+		lifecycleCallback: input.lifecycleCallback,
+	});
+
+	if (execution.exitCode !== 0) {
+		return {
+			errors: [
+				executionFailureError({
+					provider: input.provider,
+					stderr: execution.stderr,
+					errorCode: execution.errorCode,
+				}),
+			],
+		};
+	}
+
+	if (execution.parseError || !execution.parsedResult) {
+		return {
+			errors: [
+				blockedError(
+					"PROVIDER_OUTPUT_INVALID",
+					`Provider output was invalid for ${input.provider}.`,
+					execution.parseError,
+				),
+			],
+		};
+	}
+
+	return {
+		canonicalReview: execution.parsedResult,
+	};
 }
 
 async function executeVerifier(input: {
@@ -306,14 +382,197 @@ function buildVerifierResult(input: {
 function buildVerifierBatchResult(input: {
 	outcome: "pass" | "revise" | "block";
 	verifierResults: EpicVerifierResult[];
+	canonicalReview: EpicCanonicalReview;
 }): EpicVerifierBatchResult {
 	return {
 		outcome: input.outcome,
+		canonicalReview: input.canonicalReview,
 		verifierResults: input.verifierResults,
 	};
 }
 
-export async function runEpicVerify(input: {
+function uniqueStrings(values: string[]): string[] {
+	return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function uniqueFindings(
+	values: EpicVerifierResult["blockingFindings"],
+): EpicVerifierResult["blockingFindings"] {
+	const byId = new Map<
+		string,
+		EpicVerifierResult["blockingFindings"][number]
+	>();
+	for (const finding of values) {
+		if (!byId.has(finding.id)) {
+			byId.set(finding.id, finding);
+		}
+	}
+	return [...byId.values()].sort((left, right) =>
+		left.id.localeCompare(right.id),
+	);
+}
+
+function reconcileGateResult(
+	results: EpicVerifierResult[],
+): EpicCanonicalReview["gateResult"] {
+	if (results.some((result) => result.gateResult === "fail")) {
+		return "fail";
+	}
+	if (results.some((result) => result.gateResult === "not-run")) {
+		return "not-run";
+	}
+	return "pass";
+}
+
+function reconcileEpicReview(
+	results: EpicVerifierResult[],
+	outcome: "pass" | "revise" | "block",
+): EpicCanonicalReview {
+	return {
+		outcome,
+		reviewerLabels: results.map((result) => result.reviewerLabel),
+		reconciliationSummary:
+			results.length === 1
+				? `Canonical review uses the single reviewer result from ${results[0]?.reviewerLabel}.`
+				: `Canonical review reconciled ${results.length} independent reviewer results by preserving every unique finding and assessment.`,
+		crossStoryFindings: uniqueStrings(
+			results.flatMap((result) => result.crossStoryFindings),
+		),
+		architectureFindings: uniqueStrings(
+			results.flatMap((result) => result.architectureFindings),
+		),
+		epicCoverageAssessment: uniqueStrings(
+			results.flatMap((result) => result.epicCoverageAssessment),
+		),
+		productionPathFindings: uniqueStrings(
+			results.flatMap((result) => result.productionPathFindings),
+		),
+		blockingFindings: uniqueFindings(
+			results.flatMap((result) => result.blockingFindings),
+		),
+		nonBlockingFindings: uniqueFindings(
+			results.flatMap((result) => result.nonBlockingFindings),
+		),
+		unresolvedItems: uniqueStrings(
+			results.flatMap((result) => result.unresolvedItems),
+		),
+		gateResult: reconcileGateResult(results),
+	};
+}
+
+async function buildCanonicalReview(input: {
+	context: PreparedEpicContext;
+	verifierResults: EpicVerifierResult[];
+	rawReviewerAggregateOutcome: "pass" | "revise" | "block";
+	env?: Record<string, string | undefined>;
+	streamOutputPaths?: ProviderStreamOutputPaths;
+	progressTracker?: RuntimeProgressTracker;
+}): Promise<{ canonicalReview?: EpicCanonicalReview; errors: CliError[] }> {
+	if (input.verifierResults.length === 1) {
+		return {
+			canonicalReview: reconcileEpicReview(
+				input.verifierResults,
+				input.rawReviewerAggregateOutcome,
+			),
+			errors: [],
+		};
+	}
+
+	const reviewerLabels = input.verifierResults.map(
+		(result) => result.reviewerLabel,
+	);
+	const blockedReviewerCount = input.verifierResults.filter(
+		(result) => result.outcome === "block",
+	).length;
+	const prompt = await assemblePrompt({
+		role: "epic_review_reconciler",
+		epicPath: input.context.paths.epicPath,
+		techDesignPath: input.context.paths.techDesignPath,
+		techDesignCompanionPaths: input.context.paths.techDesignCompanionPaths,
+		testPlanPath: input.context.paths.testPlanPath,
+		gateCommands: input.context.gateCommands,
+		reviewerResultsJson: JSON.stringify(
+			{
+				rawReviewerAggregateOutcome: input.rawReviewerAggregateOutcome,
+				blockedReviewerCount,
+				reviewerLabels,
+				verifierResults: input.verifierResults,
+			},
+			null,
+			2,
+		),
+	});
+	await input.progressTracker?.recordVerifierLaneStarted({
+		label: input.context.reconciler.label,
+		provider: input.context.reconciler.provider,
+		phase: "epic-review-reconcile",
+		summary: "Internal epic review reconciliation started.",
+	});
+	const execution = await executeReconciliation({
+		provider: input.context.reconciler.provider,
+		cwd: input.context.providerCwd,
+		model: input.context.reconciler.model,
+		reasoningEffort: input.context.reconciler.reasoningEffort,
+		prompt: prompt.prompt,
+		env: input.env,
+		timeoutMs: input.context.reconcileTimeoutMs,
+		startupTimeoutMs: input.context.startupTimeoutMs,
+		silenceTimeoutMs: input.context.reconcileSilenceTimeoutMs,
+		streamOutputPaths: input.streamOutputPaths,
+		lifecycleCallback: (event) =>
+			input.progressTracker?.handleVerifierLaneLifecycle(
+				input.context.reconciler.label,
+				event,
+			),
+	});
+
+	if ("errors" in execution) {
+		await input.progressTracker?.recordVerifierLaneFailed({
+			label: input.context.reconciler.label,
+			provider: input.context.reconciler.provider,
+			phase: "epic-review-reconcile",
+			summary: "Internal epic review reconciliation failed.",
+			metadata: {
+				errorCodes: execution.errors.map((error) => error.code),
+			},
+		});
+		return {
+			errors: execution.errors,
+		};
+	}
+
+	await input.progressTracker?.recordVerifierLaneCompleted({
+		label: input.context.reconciler.label,
+		provider: input.context.reconciler.provider,
+		phase: "epic-review-reconcile",
+		summary: "Internal epic review reconciliation completed.",
+		metadata: {
+			gateResult: execution.canonicalReview.gateResult,
+			reviewerLabels,
+		},
+		verifiersCompleted: input.verifierResults.length,
+	});
+
+	const returnedLabels = [...execution.canonicalReview.reviewerLabels].sort();
+	if (returnedLabels.join("\n") !== [...reviewerLabels].sort().join("\n")) {
+		return {
+			errors: [
+				blockedError(
+					"PROVIDER_OUTPUT_INVALID",
+					"Internal epic review reconciliation returned reviewerLabels that do not match the completed reviewer results.",
+					`expected=${reviewerLabels.join(", ")}; actual=${execution.canonicalReview.reviewerLabels.join(", ")}`,
+				),
+			],
+		};
+	}
+
+	return {
+		canonicalReview: execution.canonicalReview,
+		errors: [],
+	};
+}
+
+export async function runEpicReview(input: {
 	specPackRoot: string;
 	configPath?: string;
 	env?: Record<string, string | undefined>;
@@ -324,8 +583,8 @@ export async function runEpicVerify(input: {
 	heartbeatCadenceMinutes?: number;
 	disableHeartbeats?: boolean;
 	progressListener?: (event: AttachedProgressEvent) => void;
-}): Promise<EpicVerifyWorkflowResult> {
-	const context = await prepareEpicVerifyContext(input);
+}): Promise<EpicReviewWorkflowResult> {
+	const context = await prepareEpicReviewContext(input);
 	if ("errors" in context) {
 		return {
 			outcome: "block",
@@ -336,7 +595,7 @@ export async function runEpicVerify(input: {
 
 	const progressTracker = input.runtimeProgressPaths
 		? await RuntimeProgressTracker.start({
-				command: "epic-verify",
+				command: "epic-review",
 				phase: "epic-verifier-1",
 				provider: context.verifiers[0]?.provider ?? "claude-code",
 				cwd: context.providerCwd,
@@ -361,7 +620,7 @@ export async function runEpicVerify(input: {
 
 	const heartbeat = progressTracker
 		? createPrimitiveHeartbeatEmitter({
-				command: "epic-verify",
+				command: "epic-review",
 				config: context.callerHarnessConfig,
 				callerHarness: input.callerHarness,
 				heartbeatCadenceMinutes: input.heartbeatCadenceMinutes,
@@ -388,7 +647,7 @@ export async function runEpicVerify(input: {
 					label: verifier.label,
 					provider: verifier.provider,
 					phase: `epic-verifier-${index + 1}`,
-					summary: `${verifier.label} started for epic verification.`,
+					summary: `${verifier.label} started for epic review.`,
 				});
 				const execution = await executeVerifier({
 					provider: verifier.provider,
@@ -410,7 +669,7 @@ export async function runEpicVerify(input: {
 						label: verifier.label,
 						provider: verifier.provider,
 						phase: `epic-verifier-${index + 1}`,
-						summary: `${verifier.label} failed for epic verification.`,
+						summary: `${verifier.label} failed for epic review.`,
 						metadata: {
 							errorCodes: execution.errors.map((error) => error.code),
 						},
@@ -423,7 +682,7 @@ export async function runEpicVerify(input: {
 					label: verifier.label,
 					provider: verifier.provider,
 					phase: `epic-verifier-${index + 1}`,
-					summary: `${verifier.label} completed for epic verification.`,
+					summary: `${verifier.label} completed for epic review.`,
 					metadata: {
 						gateResult: execution.payload.gateResult,
 					},
@@ -447,7 +706,7 @@ export async function runEpicVerify(input: {
 		);
 		if (errors.length > 0) {
 			await progressTracker?.markFailed(
-				"epic-verify failed during provider execution.",
+				"epic-review failed during provider execution.",
 				{
 					errors: errors.map((error) => error.code),
 					verifiersCompleted: completedVerifiers,
@@ -461,6 +720,7 @@ export async function runEpicVerify(input: {
 						? buildVerifierBatchResult({
 								outcome: "block",
 								verifierResults,
+								canonicalReview: reconcileEpicReview(verifierResults, "block"),
 							})
 						: undefined,
 				errors,
@@ -468,12 +728,38 @@ export async function runEpicVerify(input: {
 			};
 		}
 
-		const outcome = aggregateEpicVerifierBatchOutcome(verifierResults);
+		const rawReviewerAggregateOutcome =
+			aggregateEpicVerifierBatchOutcome(verifierResults);
+		const canonicalReview = await buildCanonicalReview({
+			context,
+			verifierResults,
+			rawReviewerAggregateOutcome,
+			env: input.env,
+			streamOutputPaths: input.streamOutputPaths,
+			progressTracker,
+		});
+		if (canonicalReview.errors.length > 0 || !canonicalReview.canonicalReview) {
+			await progressTracker?.markFailed(
+				"epic-review failed during internal reconciliation.",
+				{
+					errors: canonicalReview.errors.map((error) => error.code),
+					verifiersCompleted: completedVerifiers,
+				},
+			);
+			await progressTracker?.flush();
+			return {
+				outcome: "block",
+				errors: canonicalReview.errors,
+				warnings: [],
+			};
+		}
 
+		const outcome = canonicalReview.canonicalReview.outcome;
 		await progressTracker?.markCompleted(
-			`epic-verify completed with outcome ${outcome}.`,
+			`epic-review completed with outcome ${outcome}.`,
 			{
 				outcome,
+				rawReviewerAggregateOutcome,
 				verifiersCompleted: completedVerifiers,
 			},
 		);
@@ -484,6 +770,7 @@ export async function runEpicVerify(input: {
 			result: buildVerifierBatchResult({
 				outcome,
 				verifierResults,
+				canonicalReview: canonicalReview.canonicalReview,
 			}),
 			errors: [],
 			warnings: [],

@@ -21,13 +21,13 @@
   },
   "epic_verifiers": [
     {
-      "label": "epic-verifier-1",
+      "label": "epic-reviewer-1",
       "secondary_harness": "none",
       "model": "claude-sonnet-4-6[1m]",
       "reasoning_effort": "max"
     }
   ],
-  "epic_synthesizer": {
+  "epic_reverifier": {
     "secondary_harness": "none",
     "model": "claude-sonnet-4-6[1m]",
     "reasoning_effort": "max"

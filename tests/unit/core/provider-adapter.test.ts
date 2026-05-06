@@ -161,6 +161,80 @@ describe("provider availability checks", () => {
 		expect(parsed.parsedResult?.planSummary).toBe("Completed fixture work.");
 	});
 
+	test("parses Claude stream-json final result strings that contain fenced JSON", () => {
+		const parsed = parseClaudeCodePayload({
+			stdout: [
+				JSON.stringify({
+					type: "system",
+					subtype: "init",
+					session_id: "claude-stream-session-001",
+				}),
+				JSON.stringify({
+					type: "stream_event",
+					event: {
+						type: "message_start",
+					},
+					session_id: "claude-stream-session-001",
+				}),
+				JSON.stringify({
+					type: "assistant",
+					message: {
+						content: [
+							{
+								type: "text",
+								text: '```json\n{"outcome":"ready-for-verification","planSummary":"Completed streamed fixture work.","changedFiles":[{"path":"integration-fixture.txt","reason":"Fixture confirmation file."}],"tests":{"added":[],"modified":[],"removed":[],"totalAfterStory":1,"deltaFromPriorBaseline":0},"gatesRun":[{"command":"true","result":"pass"}],"selfReview":{"findingsFixed":[],"findingsSurfaced":[]},"openQuestions":[],"specDeviations":[],"recommendedNextStep":"Continue."}\n```',
+							},
+						],
+					},
+					session_id: "claude-stream-session-001",
+				}),
+				JSON.stringify({
+					type: "result",
+					subtype: "success",
+					session_id: "claude-stream-session-001",
+					result:
+						'```json\n{"outcome":"ready-for-verification","planSummary":"Completed streamed fixture work.","changedFiles":[{"path":"integration-fixture.txt","reason":"Fixture confirmation file."}],"tests":{"added":[],"modified":[],"removed":[],"totalAfterStory":1,"deltaFromPriorBaseline":0},"gatesRun":[{"command":"true","result":"pass"}],"selfReview":{"findingsFixed":[],"findingsSurfaced":[]},"openQuestions":[],"specDeviations":[],"recommendedNextStep":"Continue."}\n```',
+				}),
+			].join("\n"),
+			resultSchema: z.object({
+				outcome: z.literal("ready-for-verification"),
+				planSummary: z.string(),
+				changedFiles: z.array(
+					z.object({
+						path: z.string(),
+						reason: z.string(),
+					}),
+				),
+				tests: z.object({
+					added: z.array(z.string()),
+					modified: z.array(z.string()),
+					removed: z.array(z.string()),
+					totalAfterStory: z.number(),
+					deltaFromPriorBaseline: z.number(),
+				}),
+				gatesRun: z.array(
+					z.object({
+						command: z.string(),
+						result: z.enum(["pass", "fail", "not-run"]),
+					}),
+				),
+				selfReview: z.object({
+					findingsFixed: z.array(z.string()),
+					findingsSurfaced: z.array(z.string()),
+				}),
+				openQuestions: z.array(z.string()),
+				specDeviations: z.array(z.string()),
+				recommendedNextStep: z.string(),
+			}),
+		});
+
+		expect(parsed.parseError).toBeUndefined();
+		expect(parsed.sessionId).toBe("claude-stream-session-001");
+		expect(parsed.parsedResult?.planSummary).toBe(
+			"Completed streamed fixture work.",
+		);
+	});
+
 	test("resolves requested provider availability from real subprocess calls against PATH binaries", async () => {
 		const { resolveProviderMatrix } = await import(
 			"../../../src/core/provider-checks"
@@ -210,7 +284,7 @@ describe("provider availability checks", () => {
 						reasoning_effort: "xhigh",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
@@ -289,7 +363,7 @@ describe("provider availability checks", () => {
 						reasoning_effort: "xhigh",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
@@ -366,7 +440,7 @@ describe("provider availability checks", () => {
 						reasoning_effort: "high",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "none",
 					model: "claude-sonnet",
 					reasoning_effort: "high",
@@ -439,7 +513,7 @@ describe("provider availability checks", () => {
 						reasoning_effort: "high",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "none",
 					model: "claude-sonnet",
 					reasoning_effort: "high",

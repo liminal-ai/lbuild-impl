@@ -7,7 +7,7 @@ This is the main process reference after setup. Use it to decide which bounded C
 1. Setup: resolve the spec pack, initialize or resume `team-impl-log.md`, and discover verification gates.
 2. Preflight: validate the authored run configuration before any provider-backed work starts.
 3. Story cycle: implement, self-review, verify, run the final story gate, record the story receipt, then decide whether to advance.
-4. Closeout: complete cleanup, epic verification, synthesis, and the final orchestrator-owned gate.
+4. Closeout: complete epic fix, epic review, reverify, and the final orchestrator-owned gate.
 
 ## Setup Rules
 
@@ -96,18 +96,18 @@ Before accepting a story, record:
 
 ## Epic Closeout Rules
 
-- Do not launch epic verification until the cleanup artifact exists on disk.
-- Review the categorized cleanup batch with the human before dispatching `epic-cleanup`.
-- Do not treat cleanup review as a CLI-owned decision.
-- Verify the cleanup result before launching `epic-verify`.
-- Epic verification starts from the cleaned state rather than from outstanding tracked cleanup items.
-- For every multi-story epic, run `epic-verify` before final closeout.
+- Do not launch epic review until the epic-fix artifact exists on disk.
+- Review the categorized fix batch with the human before dispatching `epic-fix`.
+- Do not treat fix review as a CLI-owned decision.
+- Verify the fix result before launching `epic-review`.
+- Epic review starts from the fixed candidate state rather than from outstanding tracked fix items.
+- For every multi-story epic, run `epic-review` before final closeout.
 - Do not close the epic directly from accepted stories.
-- Do not offer or invent a skip path around epic verification.
-- Epic verification is required even when story-level verification already passed.
-- After `epic-verify` returns, launch `epic-synthesize` every run.
-- Do not treat synthesis as optional when verifier reports already exist.
-- Do not offer or invent a skip path around synthesis after epic verifier reports exist.
+- Do not offer or invent a skip path around epic review.
+- Epic review is required even when story-level verification already passed.
+- After `epic-review` returns, launch `epic-reverify` every run.
+- Do not treat reverify as optional when canonical open findings exist.
+- Do not offer or invent a skip path around reverify after epic review findings exist.
 - Treat `ready-for-closeout` as evidence to review, not as automatic epic acceptance.
 
 ## Recovery Rule

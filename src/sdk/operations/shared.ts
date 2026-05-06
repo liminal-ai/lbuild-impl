@@ -9,8 +9,8 @@ import { ensureTeamImplLog } from "../../core/log-template.js";
 import {
 	cliResultEnvelopeSchema,
 	createResultEnvelope,
-	epicCleanupResultSchema,
-	epicSynthesisResultSchema,
+	epicFixResultSchema,
+	epicReverifyResultSchema,
 	epicVerifierBatchResultSchema,
 	implementorResultSchema,
 	inspectResultSchema,
@@ -29,8 +29,8 @@ import type { ImplCliError } from "../errors/base.js";
 import { InvalidInputError } from "../errors/classes.js";
 
 export {
-	epicCleanupResultSchema,
-	epicSynthesisResultSchema,
+	epicFixResultSchema,
+	epicReverifyResultSchema,
 	epicVerifierBatchResultSchema,
 	implementorResultSchema,
 	inspectResultSchema,

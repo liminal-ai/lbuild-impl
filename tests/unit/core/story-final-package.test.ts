@@ -438,7 +438,7 @@ describe("story final package", () => {
 		expect(finalPackage.cleanupHandoff.cleanupRequired).toBe(true);
 	});
 
-	test("synthesizes a ruling request for production shim/mock decisions that still need approval instead of downgrading them to plain blocked cleanup debt", () => {
+	test("reverifys a ruling request for production shim/mock decisions that still need approval instead of downgrading them to plain blocked cleanup debt", () => {
 		const finalPackage = buildStoryLeadFinalPackage({
 			outcome: "accepted",
 			storyId: "00-foundation",

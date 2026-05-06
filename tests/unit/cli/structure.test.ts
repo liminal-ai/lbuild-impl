@@ -52,9 +52,9 @@ test("TC-3.2a: command modules stay thin and shell-only", async () => {
 		expect(source).not.toContain("runStoryContinue(");
 		expect(source).not.toContain("runStorySelfReview(");
 		expect(source).not.toContain("runStoryVerify(");
-		expect(source).not.toContain("runEpicCleanup(");
-		expect(source).not.toContain("runEpicSynthesize(");
-		expect(source).not.toContain("runEpicVerify(");
+		expect(source).not.toContain("runEpicFix(");
+		expect(source).not.toContain("runEpicReverify(");
+		expect(source).not.toContain("runEpicReview(");
 		expect(source).not.toContain("inspectSpecPack(");
 		expect(source).not.toContain("createResultEnvelope(");
 		expect(source).not.toContain("writeJsonArtifact(");

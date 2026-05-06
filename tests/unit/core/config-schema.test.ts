@@ -53,7 +53,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "xhigh",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
@@ -103,7 +103,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "xhigh",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
@@ -146,7 +146,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "xhigh",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
@@ -201,7 +201,7 @@ describe("impl-run config schema", () => {
 						reasoning_effort: "xhigh",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
@@ -244,7 +244,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "high",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "none",
 				model: "claude-sonnet",
 				reasoning_effort: "high",
@@ -289,7 +289,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "xhigh",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
@@ -334,7 +334,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "high",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "none",
 				model: "claude-sonnet",
 				reasoning_effort: "high",
@@ -344,7 +344,7 @@ describe("impl-run config schema", () => {
 		expect(parsed.story_verifier.model).toBe("claude-sonnet");
 	});
 
-	test("TC-2.3e accepts the epic verifier array plus epic synthesizer shape", async () => {
+	test("TC-2.3e accepts the epic reviewer array plus epic reverifier shape", async () => {
 		const { implRunConfigSchema } = await import(
 			"../../../src/core/config-schema"
 		);
@@ -384,7 +384,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "high",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
@@ -392,7 +392,7 @@ describe("impl-run config schema", () => {
 		});
 
 		expect(parsed.epic_verifiers).toHaveLength(2);
-		expect(parsed.epic_synthesizer.secondary_harness).toBe("codex");
+		expect(parsed.epic_reverifier.secondary_harness).toBe("codex");
 	});
 
 	test("accepts Codex as the retained story implementor secondary harness in v1", async () => {
@@ -429,7 +429,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "xhigh",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
@@ -474,7 +474,7 @@ describe("impl-run config schema", () => {
 						reasoning_effort: "xhigh",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
@@ -483,7 +483,7 @@ describe("impl-run config schema", () => {
 		).toThrow(/Invalid option/u);
 	});
 
-	test("rejects duplicate epic verifier labels", async () => {
+	test("rejects duplicate epic reviewer labels", async () => {
 		const { implRunConfigSchema } = await import(
 			"../../../src/core/config-schema"
 		);
@@ -524,7 +524,7 @@ describe("impl-run config schema", () => {
 						reasoning_effort: "high",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "codex",
 					model: "gpt-5.4",
 					reasoning_effort: "xhigh",
@@ -569,7 +569,7 @@ describe("impl-run config schema", () => {
 							reasoning_effort: "high",
 						},
 					],
-					epic_synthesizer: {
+					epic_reverifier: {
 						secondary_harness: "none",
 						model: "claude-sonnet",
 						reasoning_effort: "high",
@@ -640,7 +640,7 @@ describe("impl-run config schema", () => {
 							reasoning_effort: "high",
 						},
 					],
-					epic_synthesizer: {
+					epic_reverifier: {
 						secondary_harness: "none",
 						model: "claude-sonnet",
 						reasoning_effort: "high",
@@ -699,7 +699,7 @@ describe("impl-run config schema", () => {
 							reasoning_effort: "high",
 						},
 					],
-					epic_synthesizer: {
+					epic_reverifier: {
 						secondary_harness: "none",
 						model: "claude-sonnet",
 						reasoning_effort: "high",
@@ -751,7 +751,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "max",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",
@@ -798,7 +798,7 @@ describe("impl-run config schema", () => {
 						reasoning_effort: "high",
 					},
 				],
-				epic_synthesizer: {
+				epic_reverifier: {
 					secondary_harness: "none",
 					model: "opus",
 					reasoning_effort: "high",
@@ -850,7 +850,7 @@ describe("impl-run config schema", () => {
 					reasoning_effort: "high",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",

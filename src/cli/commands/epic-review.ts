@@ -2,12 +2,11 @@ import { defineCommand } from "citty";
 
 import {
 	type CliResultEnvelope,
-	type EpicSynthesisPayload,
-	epicSynthesize,
+	type EpicReviewPayload,
+	epicReview,
 } from "../../sdk/index.js";
 import {
 	createCommandErrorEnvelope,
-	createInvalidInvocationEnvelope,
 	emitCommandEnvelope,
 	emitPersistedCommandEnvelope,
 	providerHeartbeatArgs,
@@ -16,54 +15,24 @@ import {
 	resolveProviderArtifactOptions,
 } from "./shared.js";
 
-function collectRepeatedFlag(rawArgs: string[], flag: string): string[] {
-	const values: string[] = [];
-
-	for (let index = 0; index < rawArgs.length; index += 1) {
-		const value = rawArgs[index];
-		if (value === flag) {
-			const nextValue = rawArgs[index + 1];
-			if (nextValue && !nextValue.startsWith("--")) {
-				values.push(nextValue);
-			}
-			continue;
-		}
-
-		if (value.startsWith(`${flag}=`)) {
-			values.push(value.slice(flag.length + 1));
-		}
-	}
-
-	return values;
-}
-
 function renderHumanSummary(
-	envelope: CliResultEnvelope<EpicSynthesisPayload>,
+	envelope: CliResultEnvelope<EpicReviewPayload>,
 ): string {
 	return envelope.result
-		? [
-				`${envelope.command}: ${envelope.outcome}`,
-				`confirmed: ${envelope.result.confirmedIssues.length}`,
-				`disputed: ${envelope.result.disputedOrUnconfirmedIssues.length}`,
-			].join("\n")
+		? `${envelope.command}: ${envelope.outcome}\nverifiers: ${envelope.result.verifierResults.length}`
 		: `${envelope.command}: ${envelope.outcome}`;
 }
 
 export default defineCommand({
 	meta: {
-		name: "epic-synthesize",
-		description: "Independently verify and synthesize epic verifier findings.",
+		name: "epic-review",
+		description: "Launch a fresh epic-level verifier batch.",
 	},
 	args: {
 		"spec-pack-root": {
 			type: "string",
 			description: "Absolute or relative path to the spec-pack root",
 			required: true,
-		},
-		"verifier-report": {
-			type: "string",
-			description:
-				"Path to an epic verifier report artifact. Repeat the flag to pass multiple reports.",
 		},
 		config: {
 			type: "string",
@@ -80,34 +49,15 @@ export default defineCommand({
 		const startedAt = new Date().toISOString();
 		const artifactOptions = await resolveProviderArtifactOptions({
 			specPackRoot: args["spec-pack-root"],
-			command: "epic-synthesize",
+			command: "epic-review",
 			group: "epic",
-			fileName: "epic-synthesis",
+			fileName: "epic-review",
 		});
+
 		try {
 			rejectUnknownCommandArgs(rawArgs, cmd.args);
-			const verifierReportPaths = collectRepeatedFlag(
-				rawArgs,
-				"--verifier-report",
-			);
-
-			if (verifierReportPaths.length === 0) {
-				await emitPersistedCommandEnvelope({
-					artifactPath: artifactOptions.artifactPath,
-					envelope: createInvalidInvocationEnvelope({
-						command: "epic-synthesize",
-						artifactPath: artifactOptions.artifactPath,
-						startedAt,
-						message: "Provide at least one --verifier-report path.",
-					}),
-					json,
-				});
-				return;
-			}
-
-			const envelope = await epicSynthesize({
+			const envelope = await epicReview({
 				specPackRoot: args["spec-pack-root"],
-				verifierReportPaths,
 				configPath: args.config,
 				...resolvePrimitiveHeartbeatCliOptions(args),
 				artifactPath: artifactOptions.artifactPath,
@@ -123,10 +73,11 @@ export default defineCommand({
 			await emitPersistedCommandEnvelope({
 				artifactPath: artifactOptions.artifactPath,
 				envelope: createCommandErrorEnvelope({
-					command: "epic-synthesize",
+					command: "epic-review",
 					artifactPath: artifactOptions.artifactPath,
 					startedAt,
 					error,
+					blockedOutcome: "block",
 				}),
 				json,
 			});

@@ -7,9 +7,9 @@ import { promisify } from "node:util";
 import { describe, expect, test, vi } from "vitest";
 
 import {
-	epicCleanup,
-	epicSynthesize,
-	epicVerify,
+	epicFix,
+	epicReverify,
+	epicReview,
 	type FileSystemAdapter,
 	inspect,
 	preflight,
@@ -55,16 +55,16 @@ describe("sdk operations", () => {
 			preflight({
 				specPackRoot,
 			}),
-			epicSynthesize({
+			epicReverify({
 				specPackRoot,
-				verifierReportPaths: ["missing-report.json"],
+				reviewReportPaths: ["missing-report.json"],
 			}),
-			epicVerify({
+			epicReview({
 				specPackRoot,
 			}),
-			epicCleanup({
+			epicFix({
 				specPackRoot,
-				cleanupBatchPath: join(specPackRoot, "cleanup-batch.md"),
+				fixBatchPath: join(specPackRoot, "fix-batch.md"),
 			}),
 			quickFix({
 				specPackRoot,

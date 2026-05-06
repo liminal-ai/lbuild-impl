@@ -15,16 +15,16 @@ describe("schema derivation", () => {
 			join(ROOT, "src/core/story-verifier.ts"),
 			"utf8",
 		);
-		const cleanupSource = await readFile(
-			join(ROOT, "src/core/epic-cleanup.ts"),
+		const fixSource = await readFile(
+			join(ROOT, "src/core/epic-fix.ts"),
 			"utf8",
 		);
-		const synthesisSource = await readFile(
-			join(ROOT, "src/core/epic-synthesizer.ts"),
+		const reverifySource = await readFile(
+			join(ROOT, "src/core/epic-reverifier.ts"),
 			"utf8",
 		);
 		const epicVerifierSource = await readFile(
-			join(ROOT, "src/core/epic-verifier.ts"),
+			join(ROOT, "src/core/epic-reviewer.ts"),
 			"utf8",
 		);
 
@@ -32,8 +32,10 @@ describe("schema derivation", () => {
 		expect(implementorSource).toContain("implementorResultBaseSchema");
 		expect(verifierSource).toContain("storyVerifierResultSchema.shape");
 		expect(verifierSource).toContain("storyVerifierResultBaseSchema");
-		expect(cleanupSource).toContain("epicCleanupResultSchema");
-		expect(synthesisSource).toContain("epicSynthesisResultSchema");
+		expect(fixSource).toContain("epicFixProviderPayloadSchema");
+		expect(fixSource).toContain("buildFixResult");
+		expect(reverifySource).toContain("epicReverifyProviderPayloadSchema");
+		expect(reverifySource).toContain("buildReverifyResult");
 		expect(epicVerifierSource).toContain("epicVerifierResultSchema");
 	});
 

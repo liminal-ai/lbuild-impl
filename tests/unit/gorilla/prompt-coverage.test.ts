@@ -7,9 +7,9 @@ import { GORILLA_PROMPT_PATH } from "./helpers";
 const CLI_OPERATIONS = [
 	"inspect",
 	"preflight",
-	"epic-synthesize",
-	"epic-verify",
-	"epic-cleanup",
+	"epic-reverify",
+	"epic-review",
+	"epic-fix",
 	"quick-fix",
 	"story-implement",
 	"story-continue",

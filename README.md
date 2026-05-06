@@ -50,7 +50,7 @@ If you need to create the build pack first, start with [`liminal-spec`](https://
 
 **Run state**: implementation-run files layered beside the authored pack, including `impl-run.config.json`, `team-impl-log.md`, and generated artifacts.
 
-**Operation**: one bounded runtime action, such as inspecting a pack, preflighting readiness, implementing a story, verifying a story, continuing stalled work, or synthesizing epic status.
+**Operation**: one bounded runtime action, such as inspecting a pack, preflighting readiness, validating or running one story, verifying a story, continuing retained work, or closing out an epic through review, fix, and reverify.
 
 **Envelope**: the structured result returned by every CLI and SDK operation. Envelopes include status, outcome, errors or warnings, timestamps, operation data, and artifact references.
 
@@ -88,6 +88,29 @@ npx lbuild-impl preflight --spec-pack-root ./docs/spec-build/epics/my-epic --jso
 
 Both commands return JSON envelopes. `inspect` is read-only. Commands that perform implementation or verification write artifacts back into the spec pack.
 
+The normal story path is:
+
+```sh
+npx lbuild-impl story-orchestrate validate --spec-pack-root ./docs/spec-build/epics/my-epic --story-id 00-foundation --json
+npx lbuild-impl story-orchestrate run --spec-pack-root ./docs/spec-build/epics/my-epic --story-id 00-foundation --json
+```
+
+The normal epic closeout path is:
+
+```sh
+npx lbuild-impl epic-review --spec-pack-root ./docs/spec-build/epics/my-epic --json
+npx lbuild-impl epic-fix --spec-pack-root ./docs/spec-build/epics/my-epic --fix-batch ./docs/spec-build/epics/my-epic/artifacts/fix/001-epic-fix-batch.md --json
+npx lbuild-impl epic-reverify --spec-pack-root ./docs/spec-build/epics/my-epic --review-report ./docs/spec-build/epics/my-epic/artifacts/epic/001-epic-review.json --json
+```
+
+In practice, epic closeout is a loop:
+
+```text
+epic-review -> epic-fix -> epic-reverify -> repeat until converged
+```
+
+The final epic gate remains orchestrator-owned and is not implicitly run by the CLI.
+
 Example envelope shape:
 
 ```json
@@ -112,9 +135,9 @@ Example envelope shape:
 | `story-self-review` | Run story self-review passes |
 | `story-verify` | Verify story completion against the spec |
 | `quick-fix` | Run a bounded fix pass from verification findings |
-| `epic-verify` | Verify epic-level completion |
-| `epic-synthesize` | Synthesize epic status from stories and evidence |
-| `epic-cleanup` | Run cleanup batches after implementation |
+| `epic-review` | Run the fresh wide-net epic review pass |
+| `epic-fix` | Run a bounded epic-level fix pass from a curated fix batch |
+| `epic-reverify` | Continue epic closeout review against prior canonical findings |
 | `skill` | Read CLI-delivered skill onboarding and reference docs in bounded markdown chunks |
 
 Implementation commands support the same envelope-oriented contract through the CLI and SDK. The `skill` command is intentionally model-facing markdown instead of an operation envelope.
@@ -122,6 +145,8 @@ Implementation commands support the same envelope-oriented contract through the 
 Provider-backed commands emit caller-facing heartbeat summaries on `stderr` while work is still running. Those heartbeats are for the live caller harness that is monitoring the command, and they do not change the exact final JSON envelope on `stdout`.
 
 For `story-orchestrate`, explicit unknown run ids return `invalid-story-run-id` on `resume` and `status` instead of silently selecting another attempt. Resume results also surface durable persisted review-request or ruling artifact refs when those caller inputs are accepted.
+
+For multi-reviewer epic review, `epic-review` returns the canonical reconciled review result, not just the raw reviewer lane outputs. The individual reviewer outputs remain in the envelope as evidence.
 
 ### CLI-Delivered Skill
 
@@ -176,7 +201,7 @@ Common credentials:
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
 
-Provider-free commands such as `inspect` can run without these credentials. Real implementation and verification operations depend on the provider selected by the spec pack's run config.
+Depending on the provider and local setup, authentication may come from CLI login state instead of environment variables alone. Provider-free commands such as `inspect` can run without these credentials. Real implementation and verification operations depend on the provider selected by the spec pack's run config.
 
 ## What To Expect
 
@@ -185,6 +210,8 @@ The runtime is designed for traceable execution, not chatty interactive coding.
 - Commands return structured envelopes.
 - Mutating operations write artifacts into the spec pack.
 - Provider operations can take time and may return continuation handles.
+- Story work normally starts with `story-orchestrate validate`, then `story-orchestrate run`.
+- Epic closeout normally uses `epic-review`, `epic-fix`, and `epic-reverify`.
 - Failures should be inspectable through `status`, `outcome`, error details, and artifacts.
 - Historical epic docs are build history; current-state docs describe the implementation as it exists now.
 
@@ -254,7 +281,7 @@ See [docs/release-runbook.md](docs/release-runbook.md) for the maintainer proced
 
 ## Status
 
-Indie open-source pre-release (`0.3.0`). The CLI and SDK are usable, but the API may evolve as the broader Liminal Build platform stabilizes.
+Indie open-source pre-release (`0.4.0`). The CLI and SDK are usable, but the API and workflow vocabulary may still evolve as the broader Liminal Build platform stabilizes.
 
 ## License
 

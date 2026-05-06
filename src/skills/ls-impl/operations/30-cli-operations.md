@@ -16,9 +16,9 @@ Use `lbuild-impl ...` as the portable invocation form.
 - `story-verify` — start or continue the retained verifier session for one story
 - `story-orchestrate` — run, validate, resume, or inspect one durable story-lead attempt for one story
 - `quick-fix` — run a narrow, bounded correction
-- `epic-cleanup` — apply cleanup-only corrections before epic verification
-- `epic-verify` — run fresh epic-level verification
-- `epic-synthesize` — verify and consolidate epic-level findings
+- `epic-review` — run fresh epic-level review
+- `epic-fix` — run a bounded epic-level fix pass
+- `epic-reverify` — run the retained epic follow-up review pass
 
 ## Routing matrix
 
@@ -29,16 +29,16 @@ Every envelope has a `status` and an `outcome`. Together they determine your nex
 | `ready` | `ok` | 0 | Proceed to the next setup step |
 | `ready-for-verification` | `ok` | 0 | Run verification or the next bounded step |
 | `pass` | `ok` | 0 | Evaluate for acceptance or next stage |
-| `cleaned` | `ok` | 0 | Move into epic verification |
+| `cleaned` | `ok` | 0 | Move into epic reverify or closeout routing |
 | `ready-for-closeout` | `ok` | 0 | Run the final orchestrator-owned gate |
 | `needs-user-decision` | `needs-user-decision` | 2 | Pause and request user clarification |
 | `needs-followup-fix` | `ok` | 2 | Route same-session follow-up (see `phases/21-verification-and-fix-routing.md`) |
 | `needs-human-ruling` | `needs-user-decision` | 2 | Pause for user ruling; keep the surfaced uncertainty explicit |
 | `revise` | `ok` | 2 | Route a fix and rerun verification |
 | `needs-more-routing` | `ok` | 2 | Select another bounded correction path |
-| `needs-more-cleanup` | `ok` | 2 | Continue the cleanup cycle |
 | `needs-fixes` | `ok` | 2 | Route fixes before closeout |
-| `needs-more-verification` | `ok` | 2 | Launch additional verification or synthesis |
+| `needs-more-fix` | `ok` | 2 | Continue the epic-fix cycle |
+| `needs-more-verification` | `ok` | 2 | Decide whether another fresh epic-review pass is needed or whether to escalate |
 | `block` | `blocked` | 3 | Stop; inspect blocker details in the envelope |
 | (schema/parse/runtime failure) | `error` | 1 | Treat as CLI failure, not a workflow outcome |
 
@@ -174,35 +174,35 @@ Pass the bounded fix description as text or file. The inner result payload is pr
 
 Outcomes: `ready-for-verification`, `needs-more-routing`, `blocked`.
 
-### `epic-cleanup`
+### `epic-review`
 
-Runs the approved cleanup batch before epic verification. Uses the `quick_fixer` role configuration from `impl-run.config.json`.
-
-```bash
-lbuild-impl epic-cleanup --spec-pack-root <path> --cleanup-batch <path> [--config <path>] --json
-```
-
-Outcomes: `cleaned`, `needs-more-cleanup`, `blocked`.
-
-### `epic-verify`
-
-Launches the epic-level verifier batch. Fresh sessions.
+Launches the epic-level reviewer batch. Fresh sessions. When more than one reviewer is configured, the runtime performs its internal canonical reconciliation step before returning the final result envelope.
 
 ```bash
-lbuild-impl epic-verify --spec-pack-root <path> [--config <path>] --json
+lbuild-impl epic-review --spec-pack-root <path> [--config <path>] --json
 ```
 
 Outcomes: `pass`, `revise`, `block`.
 
-### `epic-synthesize`
+### `epic-fix`
 
-Runs synthesis across epic verifier reports. Synthesis independently verifies the reported issues rather than merging them.
+Runs a bounded epic-level fix pass from a curated fix batch.
 
 ```bash
-lbuild-impl epic-synthesize --spec-pack-root <path> --verifier-report <path> --verifier-report <path> [--config <path>] --json
+lbuild-impl epic-fix --spec-pack-root <path> --fix-batch <path> [--config <path>] --json
 ```
 
-Pass each `epic-verify` result artifact via `--verifier-report`.
+Outcomes: `cleaned`, `needs-more-fix`, `blocked`.
+
+### `epic-reverify`
+
+Runs retained follow-up epic review from the current canonical review findings.
+
+```bash
+lbuild-impl epic-reverify --spec-pack-root <path> --review-report <path> [--config <path>] --json
+```
+
+Pass the current canonical `epic-review` artifact via `--review-report`.
 
 Outcomes: `ready-for-closeout`, `needs-fixes`, `needs-more-verification`, `blocked`.
 

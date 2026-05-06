@@ -6,7 +6,7 @@ The CLI assembles every role prompt deterministically and executes it through th
 
 Every role prompt is composed the same way:
 
-1. **Base prompt** — a stable per-role prompt embedded in the CLI (implementor, verifier, quick-fixer, epic verifier, epic synthesizer).
+1. **Base prompt** — a stable per-role prompt embedded in the CLI (implementor, verifier, quick-fixer, epic reviewer, epic reverifier).
 2. **Required snippets** — reusable prompt fragments (reading journey, report contract, gate instructions, mock audit, self-review pass).
 3. **Optional public insert** — the orchestrator-visible customization file if present at the spec-pack root.
 4. **Runtime values** — story path, tech-design paths, test-plan path, gate commands, continuation handles.
@@ -24,7 +24,7 @@ Public inserts let you add project-specific context without modifying the skill.
 
 The CLI validates readability and size at preflight; malformed or unreadable inserts return `PROMPT_INSERT_INVALID`.
 
-Inserts do not apply to `quick-fix`, `epic-verify`, or `epic-synthesize` in v1. Quick-fix is story-agnostic by contract; epic roles receive the full epic and all stories in a fresh reading journey and are not customized per run.
+Inserts do not apply to `quick-fix`, `epic-review`, `epic-fix`, or `epic-reverify` in v1. Quick-fix is story-agnostic by contract; epic roles receive the closeout evidence directly and are not customized per run.
 
 ## Role-fit reading journeys
 
@@ -35,8 +35,8 @@ Each role receives a bounded reading journey chosen by its job. The CLI construc
 | Story implementor | Current story, full tech-design set, test plan | Build within one story's scope; self-review uses the same retained session in a separate bounded call and only checks obligations already present in that handoff |
 | Story verifier | Current story, full tech-design set, test plan (evidence-first lens) | Initial pass establishes findings; follow-up passes reuse the retained verifier session to assess implementor responses and convergence |
 | Quick fixer | Plain-language task description only | Stay story-agnostic; no reading journey |
-| Epic verifier | Epic, full tech-design set, test plan, all stories, full implementation | Cross-story findings, integration consistency, production-path mock audit |
-| Epic synthesizer | Epic-verifier reports plus the epic and tech-design set | Independently verify and consolidate findings |
+| Epic reviewer | Epic, full tech-design set, test plan, all stories, full implementation | Cross-story findings, integration consistency, production-path mock audit |
+| Epic reverifier | Canonical epic review findings plus the epic and tech-design set | Retained follow-up review after epic fixes |
 
 Neither implementor nor verifier reads `CLAUDE.md`, prior story files, or `team-impl-log.md`. Role context is bounded by design so sessions stay fresh and compaction-resilient.
 

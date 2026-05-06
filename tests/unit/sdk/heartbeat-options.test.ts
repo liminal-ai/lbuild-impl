@@ -67,7 +67,7 @@ describe("heartbeat option precedence", () => {
 					reasoning_effort: "high",
 				},
 			],
-			epic_synthesizer: {
+			epic_reverifier: {
 				secondary_harness: "codex",
 				model: "gpt-5.4",
 				reasoning_effort: "xhigh",

@@ -205,15 +205,15 @@ describe("heartbeat emitter", () => {
 	test("reports no-output-yet silence when the provider has not produced output", async () => {
 		const events: AttachedProgressEvent[] = [];
 		const emitter = createHeartbeatEmitter({
-			command: "epic-synthesize",
+			command: "epic-reverify",
 			callerHarness: "claude-code",
 			cadenceMinutes: 5,
 			readSnapshot: () =>
 				runtimeSnapshot({
-					command: "epic-synthesize",
-					phase: "epic-synthesis",
+					command: "epic-reverify",
+					phase: "epic-reverify",
 					lastOutputAt: null,
-					lastEventSummary: "epic-synthesize started.",
+					lastEventSummary: "epic-reverify started.",
 				}),
 			writeAttachedOutput: (event) => events.push(event),
 		});

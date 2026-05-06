@@ -3,8 +3,8 @@ import { z } from "zod";
 
 import {
 	cliResultEnvelopeSchema,
-	epicCleanupResultSchema,
-	epicSynthesisResultSchema,
+	epicFixResultSchema,
+	epicReverifyResultSchema,
 	epicVerifierBatchResultSchema,
 	implementorResultSchema,
 	inspectResultSchema,
@@ -556,22 +556,31 @@ describe("result contracts", () => {
 		});
 	});
 
-	test("TC-7.1a accepts a valid epic cleanup result envelope with the durable cleanup artifact contract", () => {
-		const parsed = cliResultEnvelopeSchema(epicCleanupResultSchema).parse({
-			command: "epic-cleanup",
+	test("TC-7.1a accepts a valid epic fix result envelope with the durable fix artifact contract", () => {
+		const parsed = cliResultEnvelopeSchema(epicFixResultSchema).parse({
+			command: "epic-fix",
 			version: 1,
 			status: "ok",
 			outcome: "cleaned",
 			result: {
-				resultId: "cleanup-result-001",
+				resultId: "fix-result-001",
+				provider: "codex",
+				model: "gpt-5.4",
+				sessionId: "codex-epic-fix-001",
+				continuation: {
+					provider: "codex",
+					sessionId: "codex-epic-fix-001",
+					operation: "epic-fix",
+				},
+				mode: "initial",
 				outcome: "cleaned",
-				cleanupBatchPath: "/tmp/spec-pack/artifacts/cleanup/cleanup-batch.md",
+				fixBatchPath: "/tmp/spec-pack/artifacts/fix/fix-batch.md",
 				filesChanged: [
-					"processes/impl-cli/commands/epic-cleanup.ts",
+					"processes/impl-cli/commands/epic-fix.ts",
 					"src/references/claude-impl-process-playbook.md",
 				],
 				changeSummary:
-					"Applied the approved cleanup-only corrections before epic verification.",
+					"Applied the approved fix-only corrections before epic review.",
 				gatesRun: [
 					{
 						command: "bun run green-verify",
@@ -579,62 +588,95 @@ describe("result contracts", () => {
 					},
 				],
 				unresolvedConcerns: [],
-				recommendedNextStep:
-					"Review the cleanup result, then launch epic verification.",
+				recommendedNextStep: "Review the fix result, then launch epic review.",
 			},
 			errors: [],
 			warnings: [],
 			artifacts: [
 				{
 					kind: "result-envelope",
-					path: "/tmp/spec-pack/artifacts/cleanup/001-cleanup-result.json",
+					path: "/tmp/spec-pack/artifacts/fix/001-fix-result.json",
 				},
 			],
 			startedAt: "2026-04-20T00:00:00.000Z",
 			finishedAt: "2026-04-20T00:00:00.500Z",
 		});
 
-		expect(parsed.result?.cleanupBatchPath).toContain("cleanup-batch.md");
+		expect(parsed.result?.fixBatchPath).toContain("fix-batch.md");
 	});
 
-	test("accepts a valid epic verifier batch envelope with explicit mock or shim audit findings and categorized issues", () => {
+	test("accepts a valid epic reviewer batch envelope with explicit mock or shim audit findings and categorized issues", () => {
 		const parsed = cliResultEnvelopeSchema(epicVerifierBatchResultSchema).parse(
 			{
-				command: "epic-verify",
+				command: "epic-review",
 				version: 1,
 				status: "ok",
 				outcome: "revise",
 				result: {
 					outcome: "revise",
+					canonicalReview: {
+						outcome: "revise",
+						reviewerLabels: ["epic-verifier-1"],
+						reconciliationSummary:
+							"Canonical review reconciled reviewer findings.",
+						crossStoryFindings: [
+							"The fix workflow and closeout docs drifted across stories.",
+						],
+						architectureFindings: [
+							"Artifact persistence is consistent, but the final closeout flow still needs reverify wiring.",
+						],
+						epicCoverageAssessment: [
+							"AC-7.1 through AC-8.4 were reviewed against the runtime and skill surfaces.",
+						],
+						productionPathFindings: [
+							"No inappropriate mocks remain on production paths after the epic fix pass.",
+						],
+						blockingFindings: [],
+						nonBlockingFindings: [
+							{
+								id: "epic-finding-001",
+								severity: "major",
+								title: "Epic reverify handoff is not yet wired",
+								evidence:
+									"The epic reviewer confirmed that closeout still lacks the mandatory reverify step.",
+								affectedFiles: ["processes/impl-cli/commands/epic-reverify.ts"],
+								requirementIds: ["TC-8.2a"],
+								recommendedFixScope: "fresh-fix-path",
+								blocking: false,
+							},
+						],
+						unresolvedItems: [],
+						gateResult: "not-run",
+					},
 					verifierResults: [
 						{
-							resultId: "epic-verify-result-001",
+							resultId: "epic-review-result-001",
 							outcome: "revise",
 							provider: "codex",
 							model: "gpt-5.4",
 							reviewerLabel: "epic-verifier-1",
 							crossStoryFindings: [
-								"The cleanup workflow and closeout docs drifted across stories.",
+								"The fix workflow and closeout docs drifted across stories.",
 							],
 							architectureFindings: [
-								"Artifact persistence is consistent, but the final closeout flow still needs synthesis wiring.",
+								"Artifact persistence is consistent, but the final closeout flow still needs reverify wiring.",
 							],
 							epicCoverageAssessment: [
 								"AC-7.1 through AC-8.4 were reviewed against the runtime and skill surfaces.",
 							],
 							productionPathFindings: [
-								"No inappropriate mocks remain on production paths after the epic cleanup pass.",
+								"No inappropriate mocks remain on production paths after the epic fix pass.",
 							],
 							blockingFindings: [],
 							nonBlockingFindings: [
 								{
 									id: "epic-finding-001",
 									severity: "major",
-									title: "Epic synthesis handoff is not yet wired",
+									title: "Epic reverify handoff is not yet wired",
 									evidence:
-										"The epic verifier confirmed that closeout still lacks the mandatory synthesis step.",
+										"The epic reviewer confirmed that closeout still lacks the mandatory reverify step.",
 									affectedFiles: [
-										"processes/impl-cli/commands/epic-synthesize.ts",
+										"processes/impl-cli/commands/epic-reverify.ts",
 									],
 									requirementIds: ["TC-8.2a"],
 									recommendedFixScope: "fresh-fix-path",
@@ -651,7 +693,7 @@ describe("result contracts", () => {
 				artifacts: [
 					{
 						kind: "result-envelope",
-						path: "/tmp/spec-pack/artifacts/epic/001-epic-verifier-batch.json",
+						path: "/tmp/spec-pack/artifacts/epic/001-epic-review.json",
 					},
 				],
 				startedAt: "2026-04-20T00:00:00.000Z",
@@ -661,35 +703,44 @@ describe("result contracts", () => {
 
 		expect(parsed.result?.verifierResults[0]?.productionPathFindings).toEqual(
 			expect.arrayContaining([
-				"No inappropriate mocks remain on production paths after the epic cleanup pass.",
+				"No inappropriate mocks remain on production paths after the epic fix pass.",
 			]),
 		);
 	});
 
-	test("TC-8.3a accepts a valid epic synthesis result envelope that keeps confirmed issues separate from disputed or unconfirmed issues", () => {
-		const parsed = cliResultEnvelopeSchema(epicSynthesisResultSchema).parse({
-			command: "epic-synthesize",
+	test("TC-8.3a accepts a valid epic reverify result envelope that keeps confirmed issues separate from disputed or unconfirmed issues", () => {
+		const parsed = cliResultEnvelopeSchema(epicReverifyResultSchema).parse({
+			command: "epic-reverify",
 			version: 1,
 			status: "ok",
 			outcome: "needs-more-verification",
 			result: {
-				resultId: "epic-synthesis-result-001",
+				resultId: "epic-reverify-result-001",
+				provider: "codex",
+				model: "gpt-5.4",
+				sessionId: "codex-epic-reverify-001",
+				continuation: {
+					provider: "codex",
+					sessionId: "codex-epic-reverify-001",
+					operation: "epic-reverify",
+				},
+				mode: "initial",
 				outcome: "needs-more-verification",
 				confirmedIssues: ["Epic verification is mandatory before closeout."],
 				disputedOrUnconfirmedIssues: [
-					"One verifier reported a production-path mock, but the synthesizer could not confirm it from the current codebase evidence.",
+					"One verifier reported a production-path mock, but the reverifier could not confirm it from the current codebase evidence.",
 				],
 				readinessAssessment:
 					"The epic is not ready for closeout because at least one material issue remains disputed.",
 				recommendedNextStep:
-					"Run another fresh epic verification pass after the cleanup fixes are applied.",
+					"Run another fresh epic review pass after the fix fixes are applied.",
 			},
 			errors: [],
 			warnings: [],
 			artifacts: [
 				{
 					kind: "result-envelope",
-					path: "/tmp/spec-pack/artifacts/epic/001-epic-synthesis.json",
+					path: "/tmp/spec-pack/artifacts/epic/001-epic-reverify.json",
 				},
 			],
 			startedAt: "2026-04-20T00:00:00.000Z",

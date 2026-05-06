@@ -24,9 +24,9 @@ Enter recovery if the session is interrupted, compacted, or resumed in a fresh c
 
 Guidance: `phases/22-recovery-and-resume.md`.
 
-## 5. Cleanup and closeout
+## 5. Closeout
 
-After all stories are accepted: compile deferred and accepted-risk items into a cleanup batch, review with the human, dispatch cleanup, verify the cleaned state, run `epic-verify` and `epic-synthesize`, then run the final epic gate yourself. No skip paths.
+After all stories are accepted: run `epic-review`, expect findings, route `epic-fix` when needed, and use `epic-reverify` as the normal follow-up review loop until the epic is ready for closeout. The epic gate must pass on that converged candidate state before you close the epic.
 
 Guidance: `phases/23-cleanup-and-closeout.md`.
 
@@ -38,4 +38,4 @@ Pause for a user decision rather than improvising when:
 - verification gate policy is ambiguous after precedence-order discovery
 - verifier and implementor evidence still disagree materially and you cannot resolve it from the retained convergence loop
 - the replay boundary during recovery is unclear
-- cleanup or epic-verification findings require product judgment
+- epic-review or epic-reverify findings require product judgment

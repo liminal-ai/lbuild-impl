@@ -48,7 +48,7 @@ interface EpicVerifierReport {
 	gateResult: "pass" | "fail" | "not-run";
 }
 
-interface EpicSynthesisPayload {
+interface EpicReverifyPayload {
 	outcome:
 		| "ready-for-closeout"
 		| "needs-fixes"
@@ -94,10 +94,10 @@ function baseVerifierReport(
 		model: reviewerLabel === "epic-verifier-1" ? "gpt-5.4" : "claude-sonnet",
 		reviewerLabel,
 		crossStoryFindings: [
-			"Cleanup, verification, and synthesis are treated as a single closeout workflow.",
+			"Fix, verification, and reverify are treated as a single closeout workflow.",
 		],
 		architectureFindings: [
-			"Artifacts persist under the expected cleanup and epic directories.",
+			"Artifacts persist under the expected fix and epic directories.",
 		],
 		epicCoverageAssessment: ["Epic AC-7.1 through AC-8.4 were reviewed."],
 		productionPathFindings: [
@@ -137,7 +137,7 @@ async function writeVerifierReport(
 	return reportPath;
 }
 
-function providerResult(sessionId: string, payload: EpicSynthesisPayload) {
+function providerResult(sessionId: string, payload: EpicReverifyPayload) {
 	return JSON.stringify({
 		sessionId,
 		result: payload,
@@ -145,8 +145,8 @@ function providerResult(sessionId: string, payload: EpicSynthesisPayload) {
 }
 
 function baseSynthesisPayload(
-	overrides: Partial<EpicSynthesisPayload> = {},
-): EpicSynthesisPayload {
+	overrides: Partial<EpicReverifyPayload> = {},
+): EpicReverifyPayload {
 	return {
 		outcome: "ready-for-closeout",
 		confirmedIssues: ["Epic verification ran before closeout."],
@@ -154,18 +154,18 @@ function baseSynthesisPayload(
 		readinessAssessment:
 			"The epic is ready for the orchestrator-owned final gate.",
 		recommendedNextStep:
-			"Run the final epic gate and review the synthesis evidence before closeout.",
+			"Run the final epic gate and review the reverify evidence before closeout.",
 		...overrides,
 	};
 }
 
-test("returns INVALID_INPUT with exit code 1 when no verifier reports are provided", async () => {
+test("returns INVALID_INPUT with exit code 1 when no review reports are provided", async () => {
 	const specPackRoot = await createEpicSpecPack(
-		"epic-synthesize-missing-reports",
+		"epic-reverify-missing-reports",
 	);
 
 	const run = await runSourceCli([
-		"epic-synthesize",
+		"epic-reverify",
 		"--spec-pack-root",
 		specPackRoot,
 		"--json",
@@ -180,14 +180,14 @@ test("returns INVALID_INPUT with exit code 1 when no verifier reports are provid
 		expect.arrayContaining([
 			expect.objectContaining({
 				code: "INVALID_INPUT",
-				message: "Provide at least one --verifier-report path.",
+				message: "Provide at least one --review-report path.",
 			}),
 		]),
 	);
 });
 
-test("TC-8.2a runs epic synthesis from verifier reports and returns the structured synthesis result", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-synthesize-contract");
+test("TC-8.2a runs epic reverify from review reports and returns the structured reverify result", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-reverify-contract");
 	await writeRunConfig(specPackRoot, createRunConfig());
 	const reportOne = await writeVerifierReport(
 		specPackRoot,
@@ -199,16 +199,14 @@ test("TC-8.2a runs epic synthesis from verifier reports and returns the structur
 		"epic-verifier-2.json",
 		baseVerifierReport("epic-verifier-2"),
 	);
-	const providerBinDir = await createTempDir(
-		"epic-synthesize-contract-provider",
-	);
+	const providerBinDir = await createTempDir("epic-reverify-contract-provider");
 	const { env, logPath } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-synthesize-001",
+					"codex-epic-reverify-001",
 					baseSynthesisPayload(),
 				),
 			},
@@ -217,12 +215,12 @@ test("TC-8.2a runs epic synthesis from verifier reports and returns the structur
 
 	const run = await runSourceCli(
 		[
-			"epic-synthesize",
+			"epic-reverify",
 			"--spec-pack-root",
 			specPackRoot,
-			"--verifier-report",
+			"--review-report",
 			reportOne,
-			"--verifier-report",
+			"--review-report",
 			reportTwo,
 			"--json",
 		],
@@ -237,14 +235,24 @@ test("TC-8.2a runs epic synthesis from verifier reports and returns the structur
 	expect(run.exitCode).toBe(0);
 
 	const envelope = parseJsonOutput(run.stdout);
-	expect(envelope.command).toBe("epic-synthesize");
+	expect(envelope.command).toBe("epic-reverify");
 	expect(envelope.outcome).toBe("ready-for-closeout");
+	expect(envelope.result).toMatchObject({
+		provider: "codex",
+		sessionId: "codex-epic-reverify-001",
+		mode: "initial",
+		continuation: {
+			provider: "codex",
+			sessionId: "codex-epic-reverify-001",
+			operation: "epic-reverify",
+		},
+	});
 	expect(envelope.result.confirmedIssues).toEqual([
 		"Epic verification ran before closeout.",
 	]);
 
 	const artifactPath = envelope.artifacts[0].path as string;
-	expect(artifactPath).toContain("/artifacts/epic/001-epic-synthesis.json");
+	expect(artifactPath).toContain("/artifacts/epic/001-epic-reverify.json");
 	const persisted = JSON.parse(await Bun.file(artifactPath).text());
 	expect(persisted).toEqual(envelope);
 	const progressPaths = buildRuntimeProgressPaths(artifactPath);
@@ -276,9 +284,78 @@ test("TC-8.2a runs epic synthesis from verifier reports and returns the structur
 	expect(invocations[0]?.args).not.toContain("resume");
 });
 
-test("blocks epic-synthesize with INVALID_SPEC_PACK when the spec-pack root is outside any git repo", async () => {
+test("continues epic-reverify with the retained provider session", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-reverify-retained");
+	await writeRunConfig(specPackRoot, createRunConfig());
+	const firstReportPath = await writeVerifierReport(
+		specPackRoot,
+		"epic-review-1.json",
+		baseVerifierReport("epic-verifier-1"),
+	);
+	const providerBinDir = await createTempDir("epic-reverify-retained-provider");
+	const { env, logPath } = await writeFakeProviderExecutable({
+		binDir: providerBinDir,
+		provider: "codex",
+		responses: [
+			{
+				stdout: providerResult(
+					"codex-epic-reverify-retained-001",
+					baseSynthesisPayload(),
+				),
+			},
+			{
+				stdout: providerResult(
+					"codex-epic-reverify-retained-001",
+					baseSynthesisPayload(),
+				),
+			},
+		],
+	});
+
+	const first = await runSourceCli(
+		[
+			"epic-reverify",
+			"--spec-pack-root",
+			specPackRoot,
+			"--review-report",
+			firstReportPath,
+			"--json",
+		],
+		{ env: { PATH: `${providerBinDir}:${process.env.PATH ?? ""}`, ...env } },
+	);
+	const firstEnvelope = parseJsonOutput(first.stdout);
+	const second = await runSourceCli(
+		[
+			"epic-reverify",
+			"--spec-pack-root",
+			specPackRoot,
+			"--review-report",
+			firstReportPath,
+			"--provider",
+			firstEnvelope.result.continuation.provider,
+			"--session-id",
+			firstEnvelope.result.continuation.sessionId,
+			"--json",
+		],
+		{ env: { PATH: `${providerBinDir}:${process.env.PATH ?? ""}`, ...env } },
+	);
+
+	expect(second.exitCode).toBe(0);
+	const secondEnvelope = parseJsonOutput(second.stdout);
+	expect(secondEnvelope.result.mode).toBe("followup");
+	expect(secondEnvelope.result.continuation).toEqual(
+		firstEnvelope.result.continuation,
+	);
+	const invocations = await readJsonLines<{ args: string[] }>(logPath);
+	expect(invocations).toHaveLength(2);
+	expect(invocations[0]?.args).not.toContain("resume");
+	expect(invocations[1]?.args).toContain("resume");
+	expect(invocations[1]?.args).toContain("codex-epic-reverify-retained-001");
+});
+
+test("blocks epic-reverify with INVALID_SPEC_PACK when the spec-pack root is outside any git repo", async () => {
 	const specPackRoot = await createExternalSpecPack(
-		"epic-synthesize-no-git-repo",
+		"epic-reverify-no-git-repo",
 	);
 	const verifierReportPath = await writeVerifierReport(
 		specPackRoot,
@@ -287,10 +364,10 @@ test("blocks epic-synthesize with INVALID_SPEC_PACK when the spec-pack root is o
 	);
 
 	const run = await runSourceCli([
-		"epic-synthesize",
+		"epic-reverify",
 		"--spec-pack-root",
 		specPackRoot,
-		"--verifier-report",
+		"--review-report",
 		verifierReportPath,
 		"--json",
 	]);
@@ -309,10 +386,8 @@ test("blocks epic-synthesize with INVALID_SPEC_PACK when the spec-pack root is o
 	);
 });
 
-test("blocks epic-synthesize when the structured synthesis payload includes an unknown top-level key", async () => {
-	const specPackRoot = await createEpicSpecPack(
-		"epic-synthesize-strict-payload",
-	);
+test("blocks epic-reverify when the structured reverify payload includes an unknown top-level key", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-reverify-strict-payload");
 	await writeRunConfig(specPackRoot, createRunConfig());
 	const reportOne = await writeVerifierReport(
 		specPackRoot,
@@ -324,14 +399,14 @@ test("blocks epic-synthesize when the structured synthesis payload includes an u
 		"epic-verifier-2.json",
 		baseVerifierReport("epic-verifier-2"),
 	);
-	const providerBinDir = await createTempDir("epic-synthesize-strict-provider");
+	const providerBinDir = await createTempDir("epic-reverify-strict-provider");
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
 				stdout: JSON.stringify({
-					sessionId: "codex-epic-synthesize-strict-001",
+					sessionId: "codex-epic-reverify-strict-001",
 					result: {
 						...baseSynthesisPayload(),
 						extraField: "drift",
@@ -343,12 +418,12 @@ test("blocks epic-synthesize when the structured synthesis payload includes an u
 
 	const run = await runSourceCli(
 		[
-			"epic-synthesize",
+			"epic-reverify",
 			"--spec-pack-root",
 			specPackRoot,
-			"--verifier-report",
+			"--review-report",
 			reportOne,
-			"--verifier-report",
+			"--review-report",
 			reportTwo,
 			"--json",
 		],
@@ -375,9 +450,9 @@ test("blocks epic-synthesize when the structured synthesis payload includes an u
 	);
 });
 
-test("TC-8.3a verifies findings independently instead of blindly merging verifier reports", async () => {
+test("TC-8.3a verifies findings independently instead of blindly merging review reports", async () => {
 	const specPackRoot = await createEpicSpecPack(
-		"epic-synthesize-independent-verification",
+		"epic-reverify-independent-verification",
 	);
 	await writeRunConfig(specPackRoot, createRunConfig());
 	const reportOne = await writeVerifierReport(
@@ -389,8 +464,8 @@ test("TC-8.3a verifies findings independently instead of blindly merging verifie
 				{
 					id: "epic-synth-finding-001",
 					severity: "major",
-					title: "Cleanup precedes epic verification",
-					evidence: "Verifier 1 observed the documented cleanup ordering.",
+					title: "Fix precedes epic verification",
+					evidence: "Verifier 1 observed the documented fix ordering.",
 					affectedFiles: ["src/references/claude-impl-process-playbook.md"],
 					requirementIds: ["TC-7.3a"],
 					recommendedFixScope: "fresh-fix-path",
@@ -420,7 +495,7 @@ test("TC-8.3a verifies findings independently instead of blindly merging verifie
 		}),
 	);
 	const providerBinDir = await createTempDir(
-		"epic-synthesize-independent-verification-provider",
+		"epic-reverify-independent-verification-provider",
 	);
 	const { env, logPath } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
@@ -428,11 +503,11 @@ test("TC-8.3a verifies findings independently instead of blindly merging verifie
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-synthesize-002",
+					"codex-epic-reverify-002",
 					baseSynthesisPayload({
 						outcome: "needs-more-verification",
 						confirmedIssues: [
-							"Cleanup must be verified before epic verification begins.",
+							"Fix must be verified before epic verification begins.",
 						],
 						disputedOrUnconfirmedIssues: [
 							"The reported production-path mock could not be confirmed from the current evidence set.",
@@ -449,12 +524,12 @@ test("TC-8.3a verifies findings independently instead of blindly merging verifie
 
 	const run = await runSourceCli(
 		[
-			"epic-synthesize",
+			"epic-reverify",
 			"--spec-pack-root",
 			specPackRoot,
-			"--verifier-report",
+			"--review-report",
 			reportOne,
-			"--verifier-report",
+			"--review-report",
 			reportTwo,
 			"--json",
 		],
@@ -471,7 +546,7 @@ test("TC-8.3a verifies findings independently instead of blindly merging verifie
 	const envelope = parseJsonOutput(run.stdout);
 	expect(envelope.outcome).toBe("needs-more-verification");
 	expect(envelope.result.confirmedIssues).toEqual([
-		"Cleanup must be verified before epic verification begins.",
+		"Fix must be verified before epic verification begins.",
 	]);
 	expect(envelope.result.disputedOrUnconfirmedIssues).toEqual([
 		"The reported production-path mock could not be confirmed from the current evidence set.",
@@ -486,7 +561,7 @@ test("TC-8.3a verifies findings independently instead of blindly merging verifie
 });
 
 test("returns needs-more-verification when all epic findings remain disputed or unconfirmed", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-synthesize-all-disputed");
+	const specPackRoot = await createEpicSpecPack("epic-reverify-all-disputed");
 	await writeRunConfig(specPackRoot, createRunConfig());
 	const reportOne = await writeVerifierReport(
 		specPackRoot,
@@ -503,7 +578,7 @@ test("returns needs-more-verification when all epic findings remain disputed or 
 		}),
 	);
 	const providerBinDir = await createTempDir(
-		"epic-synthesize-all-disputed-provider",
+		"epic-reverify-all-disputed-provider",
 	);
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
@@ -511,7 +586,7 @@ test("returns needs-more-verification when all epic findings remain disputed or 
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-synthesize-003",
+					"codex-epic-reverify-003",
 					baseSynthesisPayload({
 						outcome: "needs-more-verification",
 						confirmedIssues: [],
@@ -530,12 +605,12 @@ test("returns needs-more-verification when all epic findings remain disputed or 
 
 	const run = await runSourceCli(
 		[
-			"epic-synthesize",
+			"epic-reverify",
 			"--spec-pack-root",
 			specPackRoot,
-			"--verifier-report",
+			"--review-report",
 			reportOne,
-			"--verifier-report",
+			"--review-report",
 			reportTwo,
 			"--json",
 		],
@@ -555,8 +630,8 @@ test("returns needs-more-verification when all epic findings remain disputed or 
 	expect(envelope.result.disputedOrUnconfirmedIssues).toHaveLength(1);
 });
 
-test("returns exit code 2 when epic synthesis reports needs-fixes", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-synthesize-needs-fixes");
+test("returns exit code 2 when epic reverify reports needs-fixes", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-reverify-needs-fixes");
 	await writeRunConfig(specPackRoot, createRunConfig());
 	const reportOne = await writeVerifierReport(
 		specPackRoot,
@@ -573,7 +648,7 @@ test("returns exit code 2 when epic synthesis reports needs-fixes", async () => 
 		}),
 	);
 	const providerBinDir = await createTempDir(
-		"epic-synthesize-needs-fixes-provider",
+		"epic-reverify-needs-fixes-provider",
 	);
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
@@ -581,7 +656,7 @@ test("returns exit code 2 when epic synthesis reports needs-fixes", async () => 
 		responses: [
 			{
 				stdout: providerResult(
-					"codex-epic-synthesize-004",
+					"codex-epic-reverify-004",
 					baseSynthesisPayload({
 						outcome: "needs-fixes",
 						confirmedIssues: [
@@ -591,7 +666,7 @@ test("returns exit code 2 when epic synthesis reports needs-fixes", async () => 
 						readinessAssessment:
 							"The epic is not ready for closeout until the confirmed issue is fixed.",
 						recommendedNextStep:
-							"Route the confirmed issue to a fix path, then re-run epic verification and synthesis.",
+							"Route the confirmed issue to a fix path, then re-run epic verification and reverify.",
 					}),
 				),
 			},
@@ -600,12 +675,12 @@ test("returns exit code 2 when epic synthesis reports needs-fixes", async () => 
 
 	const run = await runSourceCli(
 		[
-			"epic-synthesize",
+			"epic-reverify",
 			"--spec-pack-root",
 			specPackRoot,
-			"--verifier-report",
+			"--review-report",
 			reportOne,
-			"--verifier-report",
+			"--review-report",
 			reportTwo,
 			"--json",
 		],
@@ -626,8 +701,8 @@ test("returns exit code 2 when epic synthesis reports needs-fixes", async () => 
 	]);
 });
 
-test("returns exit code 3 when epic synthesis is blocked by provider execution failure", async () => {
-	const specPackRoot = await createEpicSpecPack("epic-synthesize-blocked");
+test("returns exit code 3 when epic reverify is blocked by provider execution failure", async () => {
+	const specPackRoot = await createEpicSpecPack("epic-reverify-blocked");
 	await writeRunConfig(specPackRoot, createRunConfig());
 	const reportOne = await writeVerifierReport(
 		specPackRoot,
@@ -639,15 +714,13 @@ test("returns exit code 3 when epic synthesis is blocked by provider execution f
 		"epic-verifier-2.json",
 		baseVerifierReport("epic-verifier-2"),
 	);
-	const providerBinDir = await createTempDir(
-		"epic-synthesize-blocked-provider",
-	);
+	const providerBinDir = await createTempDir("epic-reverify-blocked-provider");
 	const { env } = await writeFakeProviderExecutable({
 		binDir: providerBinDir,
 		provider: "codex",
 		responses: [
 			{
-				stderr: "epic synthesis provider failed before returning JSON",
+				stderr: "epic reverify provider failed before returning JSON",
 				exitCode: 1,
 			},
 		],
@@ -655,12 +728,12 @@ test("returns exit code 3 when epic synthesis is blocked by provider execution f
 
 	const run = await runSourceCli(
 		[
-			"epic-synthesize",
+			"epic-reverify",
 			"--spec-pack-root",
 			specPackRoot,
-			"--verifier-report",
+			"--review-report",
 			reportOne,
-			"--verifier-report",
+			"--review-report",
 			reportTwo,
 			"--json",
 		],
@@ -686,9 +759,9 @@ test("returns exit code 3 when epic synthesis is blocked by provider execution f
 	);
 });
 
-test("returns exit code 3 when a verifier report path is unreadable", async () => {
+test("returns exit code 3 when a review report path is unreadable", async () => {
 	const specPackRoot = await createEpicSpecPack(
-		"epic-synthesize-unreadable-report",
+		"epic-reverify-unreadable-report",
 	);
 	await writeRunConfig(specPackRoot, createRunConfig());
 	const reportOne = await writeVerifierReport(
@@ -705,12 +778,12 @@ test("returns exit code 3 when a verifier report path is unreadable", async () =
 
 	try {
 		const run = await runSourceCli([
-			"epic-synthesize",
+			"epic-reverify",
 			"--spec-pack-root",
 			specPackRoot,
-			"--verifier-report",
+			"--review-report",
 			reportOne,
-			"--verifier-report",
+			"--review-report",
 			reportTwo,
 			"--json",
 		]);

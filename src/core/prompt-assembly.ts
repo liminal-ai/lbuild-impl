@@ -25,7 +25,7 @@ interface SharedPromptInput {
 	techDesignPath?: string;
 	techDesignCompanionPaths?: string[];
 	testPlanPath?: string;
-	verifierReportPaths?: string[];
+	reviewReportPaths?: string[];
 	gateCommands: {
 		story?: string;
 		epic?: string;
@@ -76,8 +76,13 @@ export interface EpicVerifierPromptInput extends SharedPromptInput {
 	reviewerLabel?: string;
 }
 
-export interface EpicSynthesizerPromptInput extends SharedPromptInput {
-	role: "epic_synthesizer";
+export interface EpicReverifierPromptInput extends SharedPromptInput {
+	role: "epic_reverifier";
+}
+
+export interface EpicReviewReconcilerPromptInput extends SharedPromptInput {
+	role: "epic_review_reconciler";
+	reviewerResultsJson: string;
 }
 
 export type PromptAssemblyInput =
@@ -86,7 +91,8 @@ export type PromptAssemblyInput =
 	| StoryVerifierPromptInput
 	| QuickFixPromptInput
 	| EpicVerifierPromptInput
-	| EpicSynthesizerPromptInput;
+	| EpicReverifierPromptInput
+	| EpicReviewReconcilerPromptInput;
 
 export interface PromptAssemblyResult {
 	prompt: string;
@@ -106,9 +112,10 @@ function basePromptIdForRole(role: PromptAssemblyInput["role"]): BasePromptId {
 		case "quick_fixer":
 			return "quick-fixer";
 		case "epic_verifier":
-			return "epic-verifier";
-		case "epic_synthesizer":
-			return "epic-synthesizer";
+			return "epic-reviewer";
+		case "epic_reverifier":
+		case "epic_review_reconciler":
+			return "epic-reverifier";
 	}
 }
 
@@ -151,7 +158,8 @@ function snippetIdsForInput(input: PromptAssemblyInput): SnippetId[] {
 				"report-contract",
 				"mock-audit",
 			];
-		case "epic_synthesizer":
+		case "epic_reverifier":
+		case "epic_review_reconciler":
 			return ["reading-journey", "gate-instructions", "report-contract"];
 	}
 }
@@ -196,11 +204,11 @@ function buildReadingJourney(input: PromptAssemblyInput): string {
 	if (input.testPlanPath) {
 		commonLines.push(`- Test Plan: ${input.testPlanPath}`);
 	}
-	const reportLines = (input.verifierReportPaths ?? []).map(
+	const reportLines = (input.reviewReportPaths ?? []).map(
 		(path) => `  - ${path}`,
 	);
 	if (reportLines.length > 0) {
-		commonLines.push(`- Verifier Reports:\n${reportLines.join("\n")}`);
+		commonLines.push(`- Review Reports:\n${reportLines.join("\n")}`);
 	}
 	const common = commonLines.join("\n");
 
@@ -255,11 +263,21 @@ function buildReadingJourney(input: PromptAssemblyInput): string {
 		].join("\n");
 	}
 
-	if (input.role === "epic_synthesizer") {
+	if (input.role === "epic_reverifier") {
 		return [
-			"Read the epic-level artifacts and the verifier reports before you conclude closeout readiness.",
+			"Read the epic-level artifacts and the review reports before you conclude closeout readiness.",
 			common,
 			"Independently verify the reported issues against the current evidence instead of merging them blindly.",
+		].join("\n");
+	}
+
+	if (input.role === "epic_review_reconciler") {
+		return [
+			"Read the epic-level artifacts and the independent reviewer results before you produce the canonical epic review.",
+			common,
+			"Reconcile reviewer disagreements against evidence. Preserve supported findings, discard unsupported duplicates, and explain the canonical outcome.",
+			"If one or more reviewers returned block, default conservative: do not downgrade a blocker unless the code and epic evidence explicitly disprove it.",
+			"If two or more reviewers returned block, require finding-by-finding adjudication before downgrading any of them.",
 		].join("\n");
 	}
 
@@ -281,8 +299,10 @@ function resultContractName(input: PromptAssemblyInput): string {
 			return "QuickFixResult";
 		case "epic_verifier":
 			return "EpicVerifierProviderPayload";
-		case "epic_synthesizer":
-			return "EpicSynthesisProviderPayload";
+		case "epic_reverifier":
+			return "EpicReverifyProviderPayload";
+		case "epic_review_reconciler":
+			return "EpicCanonicalReviewProviderPayload";
 	}
 }
 
@@ -415,7 +435,7 @@ function resultContractSchema(input: PromptAssemblyInput): string {
 				"- Return only this JSON object with no extra top-level keys.",
 				"- Do not include `resultId`, `provider`, `model`, or `reviewerLabel`; the CLI adds identity fields itself.",
 			].join("\n");
-		case "epic_synthesizer":
+		case "epic_reverifier":
 			return [
 				"```json",
 				"{",
@@ -429,6 +449,39 @@ function resultContractSchema(input: PromptAssemblyInput): string {
 				"Rules:",
 				"- Return only this JSON object with no extra top-level keys.",
 				"- Do not include `resultId`; the CLI adds identity fields itself.",
+			].join("\n");
+		case "epic_review_reconciler":
+			return [
+				"```json",
+				"{",
+				'  "outcome": "pass" | "revise" | "block",',
+				'  "reviewerLabels": ["string"],',
+				'  "reconciliationSummary": "string",',
+				'  "crossStoryFindings": ["string"],',
+				'  "architectureFindings": ["string"],',
+				'  "epicCoverageAssessment": ["string"],',
+				'  "productionPathFindings": ["string"],',
+				'  "blockingFindings": [',
+				"    {",
+				'      "id": "string",',
+				'      "severity": "critical" | "major" | "minor" | "observation",',
+				'      "title": "string",',
+				'      "evidence": "string",',
+				'      "affectedFiles": ["string"],',
+				'      "requirementIds": ["string"],',
+				'      "recommendedFixScope": "same-session-implementor" | "quick-fix" | "fresh-fix-path" | "human-ruling",',
+				'      "blocking": true',
+				"    }",
+				"  ],",
+				'  "nonBlockingFindings": [/* same finding shape */],',
+				'  "unresolvedItems": ["string"],',
+				'  "gateResult": "pass" | "fail" | "not-run"',
+				"}",
+				"```",
+				"Rules:",
+				"- Return only this JSON object with no extra top-level keys.",
+				"- `reviewerLabels` must exactly list the reviewer labels represented in the supplied reviewer results.",
+				"- The canonical review must be evidence-bound: include supported findings once, merge duplicates, and explain material disagreements in `reconciliationSummary`.",
 			].join("\n");
 		case "quick_fixer":
 			return "";
@@ -445,8 +498,10 @@ function routingGuidance(input: PromptAssemblyInput): string {
 				: "Preserve the outcome, requirement coverage, and recommended fix scope for the orchestrator.";
 		case "quick_fixer":
 			return "Report whether the bounded fix is ready for verification or needs more routing.";
-		case "epic_synthesizer":
+		case "epic_reverifier":
 			return "Keep confirmed issues separate from disputed or unconfirmed issues.";
+		case "epic_review_reconciler":
+			return "Return the canonical epic review derived from the independent reviewer results.";
 		default:
 			return "";
 	}
@@ -483,6 +538,8 @@ function runtimeValues(input: PromptAssemblyInput): Record<string, string> {
 			input.role === "story_verifier" ? (input.followupResponse ?? "") : "",
 		ORCHESTRATOR_CONTEXT:
 			input.role === "story_verifier" ? (input.orchestratorContext ?? "") : "",
+		REVIEWER_RESULTS_JSON:
+			input.role === "epic_review_reconciler" ? input.reviewerResultsJson : "",
 		FOLLOWUP_REQUEST:
 			input.role === "quick_fixer"
 				? input.followupRequest

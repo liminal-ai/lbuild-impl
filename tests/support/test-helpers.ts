@@ -87,7 +87,7 @@ export function createRunConfig(
 				reasoning_effort: "xhigh",
 			},
 		],
-		epic_synthesizer: {
+		epic_reverifier: {
 			secondary_harness: "codex",
 			model: "gpt-5.4",
 			reasoning_effort: "xhigh",
@@ -114,9 +114,9 @@ export function createRunConfig(
 			...overrides.self_review,
 		},
 		epic_verifiers: overrides.epic_verifiers ?? base.epic_verifiers,
-		epic_synthesizer: {
-			...base.epic_synthesizer,
-			...overrides.epic_synthesizer,
+		epic_reverifier: {
+			...base.epic_reverifier,
+			...overrides.epic_reverifier,
 		},
 	};
 }

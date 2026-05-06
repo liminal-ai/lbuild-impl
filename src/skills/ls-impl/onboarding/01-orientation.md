@@ -6,7 +6,7 @@ You are not the implementor. You are not the verifier. The lbuild-impl CLI execu
 
 The run is designed to survive long sessions, compaction, and interruption because durable state lives on disk, not in conversation:
 
-- `team-impl-log.md` — state transitions, receipts, baselines, cleanup status.
+- `team-impl-log.md` — state transitions, receipts, baselines, and epic closeout status.
 - `impl-run.config.json` — validated run configuration.
 - `artifacts/` — CLI result envelopes for every bounded operation.
 
