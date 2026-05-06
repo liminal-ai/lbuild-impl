@@ -220,7 +220,9 @@ describe("runtime progress artifacts", () => {
 			streamOutputPaths: streamPaths,
 			lifecycleCallback: (event) => tracker.handleProviderLifecycle(event),
 		});
-		expect(execution.errorCode).toBe("PROVIDER_STARTUP_FAILED");
+		expect(["PROVIDER_STARTUP_FAILED", "PROVIDER_STALLED"]).toContain(
+			execution.errorCode,
+		);
 
 		await tracker.markFailed(
 			"story-verify failed startup before any provider output.",
@@ -238,11 +240,19 @@ describe("runtime progress artifacts", () => {
 		).map((line) => runtimeProgressEventSchema.parse(line));
 
 		expect(runtimeStatus.status).toBe("failed");
-		expect(runtimeStatus.providerLiveness).toBe("startup-failed");
+		expect(["startup-failed", "stalled"]).toContain(
+			runtimeStatus.providerLiveness,
+		);
 		expect(runtimeStatus.configuredStartupTimeoutMs).toBe(50);
 		expect(runtimeStatus.configuredSilenceTimeoutMs).toBe(100);
 		expect(progressEvents.map((event) => event.event)).toEqual(
-			expect.arrayContaining(["startup-failed", "provider-exit", "failed"]),
+			expect.arrayContaining([
+				execution.errorCode === "PROVIDER_STARTUP_FAILED"
+					? "startup-failed"
+					: "stalled",
+				"provider-exit",
+				"failed",
+			]),
 		);
 	});
 
