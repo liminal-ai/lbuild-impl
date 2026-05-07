@@ -9,7 +9,7 @@ Entries here use a `BUG-IMPL-NNN` namespace to keep them distinct from Windows-s
 ## BUG-IMPL-012 — Caller ruling approval is recorded but not propagated into `riskAndDeviationReview.specDeviations[*].approvalStatus`, so the orchestrator re-emits the same `rulingRequest.id` on every resume
 
 **Severity:** Blocker for any story whose `accept-story` decision is gated on caller rulings — the story can never reach `accepted` no matter how many times the same ruling is approved. Reproducible on every platform; surfaced first on Windows v0.4.0 only because that was the first end-to-end orchestrate run we got through.
-**Status:** Open in v0.4.0. Reproduced 2026-05-07 against `lbuild-impl@0.4.0` on Windows 10 Pro running `story-orchestrate resume` against `C:\github\crumb\docs\epics\f0` story `00-foundation`. Same code paths exist on POSIX, so a Linux/macOS reproducer should be trivial.
+**Status:** Open in v0.4.0; **patched locally 2026-05-07** in `src/core/story-final-package.ts:buildStoryLeadFinalPackage` (idempotent reconciliation of `riskAndDeviationReview.specDeviations[*]` / `productionPathDecisionItems[*]` / `scopeChanges[*]` / `assumedRisks[*]` against `callerInputHistory.rulings` on every turn — see "Verification (after fix)" below). Reproduced 2026-05-07 against `lbuild-impl@0.4.0` on Windows 10 Pro running `story-orchestrate resume` against `C:\github\crumb\docs\epics\f0` story `00-foundation`. Same code paths exist on POSIX, so a Linux/macOS reproducer should be trivial.
 **Affected:** Any spec pack whose story produces spec deviations gated on `riskAndDeviationReview.specDeviations[*].approvalStatus = "needs-ruling"`. Stories without spec deviations are unaffected. The `accept-story` action is not the only consumer of per-deviation approval state, but it is the most user-visible.
 
 ### Symptom
@@ -87,7 +87,15 @@ A purely-belt-and-suspenders safety: when the planner emits `action-selected: ac
 
 `story-orchestrate resume` after a caller-ruling-approval is the exact flow we just exercised on Windows for the first time. If the upstream test suite covers ruling ingestion, it likely asserts only the recording sites that work (`callerInputHistory.rulings`, `acceptanceChecks`, `result.acceptedRulingRequestId`) — none of which fail. The missing assertion is "after ingesting an approving ruling, `riskAndDeviationReview.specDeviations[*].approvalStatus` should reflect the approval and the orchestrator should not re-emit the same `rulingRequest.id`." A test that drives a complete `run` → `needs-ruling` → write-ruling → `resume` → `accept-story` cycle would catch it.
 
-### Verification
+### Verification (after fix)
+
+Option B (idempotent reconciliation at final-package build time) was applied locally on 2026-05-07. Edits in `src/core/story-final-package.ts`:
+
+1. New helper `applyRulingsToReviewCategory` — given a `RiskOrDeviationItem[]` and the current `CallerInputHistory.rulings`, returns a new array in which any item with `approvalStatus === "needs-ruling"` whose category-level ruling-request id has been resolved by an `approve`/`reject` ruling has its status flipped accordingly. The category-level id pattern is the canonical `${storyRunId}-ruling-${decisionType}` already produced by `reverifyRulingRequest`, so matching is unambiguous and there is no per-item id required.
+2. New helper `applyRulingsToRiskAndDeviationReview` — runs the per-category helper across all four review buckets (`specDeviations`, `productionPathDecisionItems`, `scopeChanges`, `assumedRisks`) using a `REVIEW_CATEGORY_DECISION_TYPES` lookup so the canonical decision-type strings are defined exactly once.
+3. `buildStoryLeadFinalPackage` now calls `applyRulingsToRiskAndDeviationReview` immediately after assembling `riskAndDeviationReview` from the input — before downstream consumers read it (`acceptanceChecks`, `reverifyRulingRequest`, `cleanupHandoff`, the final package itself). The reconciliation runs on every turn, so a missed propagation in a prior turn self-heals on the next turn.
+
+Why idempotent reconciliation rather than match-and-update at ruling-ingestion time: rulings are appended to `callerInputHistory` in `story-lead.ts:appendRulingResponse` from a different code path than where deviations are constructed (deviations are rebuilt from the implementor result on every planner turn at `story-lead.ts:3173-3183`). Mutating both writers symmetrically would require two coordinated changes; reconciling at final-package build time covers all current and future deviation sources with one local change.
 
 After the fix, repro steps 1–6 above should produce:
 
