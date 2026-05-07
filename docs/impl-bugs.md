@@ -9,7 +9,7 @@ Entries here use a `BUG-IMPL-NNN` namespace to keep them distinct from Windows-s
 ## BUG-IMPL-012 — Caller ruling approval is recorded but not propagated into `riskAndDeviationReview.specDeviations[*].approvalStatus`, so the orchestrator re-emits the same `rulingRequest.id` on every resume
 
 **Severity:** Blocker for any story whose `accept-story` decision is gated on caller rulings — the story can never reach `accepted` no matter how many times the same ruling is approved. Reproducible on every platform; surfaced first on Windows v0.4.0 only because that was the first end-to-end orchestrate run we got through.
-**Status:** Open in v0.4.0; **patched locally 2026-05-07** in `src/core/story-final-package.ts:buildStoryLeadFinalPackage` (idempotent reconciliation of `riskAndDeviationReview.specDeviations[*]` / `productionPathDecisionItems[*]` / `scopeChanges[*]` / `assumedRisks[*]` against `callerInputHistory.rulings` on every turn — see "Verification (after fix)" below). Reproduced 2026-05-07 against `lbuild-impl@0.4.0` on Windows 10 Pro running `story-orchestrate resume` against `C:\github\crumb\docs\epics\f0` story `00-foundation`. Same code paths exist on POSIX, so a Linux/macOS reproducer should be trivial.
+**Status:** Open in v0.4.0; **patched and verified locally 2026-05-07** in `src/core/story-final-package.ts:buildStoryLeadFinalPackage` (idempotent reconciliation of `riskAndDeviationReview.specDeviations[*]` / `productionPathDecisionItems[*]` / `scopeChanges[*]` / `assumedRisks[*]` against `callerInputHistory.rulings` on every turn — see "Verification (after fix)" below). Reproduced 2026-05-07 against `lbuild-impl@0.4.0` on Windows 10 Pro running `story-orchestrate resume` against `C:\github\crumb\docs\epics\f0` story `00-foundation`. Same code paths exist on POSIX, so a Linux/macOS reproducer should be trivial.
 **Affected:** Any spec pack whose story produces spec deviations gated on `riskAndDeviationReview.specDeviations[*].approvalStatus = "needs-ruling"`. Stories without spec deviations are unaffected. The `accept-story` action is not the only consumer of per-deviation approval state, but it is the most user-visible.
 
 ### Symptom
@@ -97,31 +97,60 @@ Option B (idempotent reconciliation at final-package build time) was applied loc
 
 Why idempotent reconciliation rather than match-and-update at ruling-ingestion time: rulings are appended to `callerInputHistory` in `story-lead.ts:appendRulingResponse` from a different code path than where deviations are constructed (deviations are rebuilt from the implementor result on every planner turn at `story-lead.ts:3173-3183`). Mutating both writers symmetrically would require two coordinated changes; reconciling at final-package build time covers all current and future deviation sources with one local change.
 
-After the fix, repro steps 1–6 above should produce:
+**Verified end-to-end on 2026-05-07** via a third invocation against the same `00-foundation` story:
 
 ```text
-$ lbuild-impl story-orchestrate resume --spec-pack-root <pack> --story-id <story> --json
+$ lbuild-impl story-orchestrate resume --spec-pack-root C:/github/crumb/docs/epics/f0 \
+                                       --story-id 00-foundation --heartbeat --json
 {
-  "command": "story-orchestrate resume",
-  "status": "ok",
-  "outcome": "completed",   // or whatever the canonical "story accepted" terminal is
+  "command":  "story-orchestrate resume",
+  "status":   "ok",
+  "outcome":  "accepted",
+  "errors":   [],
+  "warnings": [],
   …
 }
 
-$ jq '.specDeviations' …/story-lead/NNN-final-package.json | jq '.[].approvalStatus'
-"approved"
-"approved"
+$ jq '.riskAndDeviationReview.specDeviations[]
+      | {approvalStatus, approvalSource}' …/story-lead/001-final-package.json
+{ "approvalStatus": "approved", "approvalSource": "caller" }
+{ "approvalStatus": "approved", "approvalSource": "caller" }
 ```
 
-…and `001-events.jsonl` should show `ruling-received` → `accept-story` → a terminal `story-accepted` (or equivalent), with no further `needs-ruling` re-emission.
+End-to-end timing: 21.6 s wall-clock for the verification resume (one fresh planner spawn ≈ 21 s, then `action-selected: accept-story` → terminal `accepted` in 24 ms inside the planner turn). No new ruling artifact was written for this invocation — the existing ruling in `callerInputHistory.rulings` from the prior resume was sufficient, exactly as the idempotent design intends.
 
-### Companion observations from the same run
+`001-events.jsonl` gained four events on this resume (sequences 26–29):
+
+```text
+seq 26  story-run-resumed
+seq 27  story-lead-provider-started   (turn 1, planner-turn-007.md, fresh codex session)
+seq 28  story-lead-action-selected    (accept-story, turn 1)
+seq 29  accepted                       (terminalDecision: accept)
+```
+
+Final-package state at acceptance:
+
+```text
+riskAndDeviationReview.specDeviations[*].approvalStatus  "approved" / "approved"
+riskAndDeviationReview.specDeviations[*].approvalSource  "caller"  / "caller"
+riskAndDeviationReview.{assumedRisks, scopeChanges,
+                       productionPathDecisionItems}     []
+rulingRequest                                            null
+recommendedImplLeadAction                                "accept"
+commitReadiness.state                                    "ready-for-impl-lead-commit"
+logHandoff.recommendedState                              "BETWEEN_STORIES"
+```
+
+No `ruling-received` event in the resume's events (correct — no `--ruling-file` was passed and the ruling was already persisted from sequence 22). No regressions: zero hits across `EPERM`, `EBUSY`, `EACCES`, `ENOENT`, `EFTYPE`, `EPIPE`, `ENAMETOOLONG`, `PROVIDER_OUTPUT_INVALID`, `sandbox`, `denied`, `rename`, `Traceback`, `FAILED` in any stream or event log. The EPIPE-safe stdin write applied as part of the BUG-WIN-010 fix continues to hold up across the faster resume turnaround.
+
+### Companion observations from the verification run
 
 These do not warrant separate entries but are worth flagging if they intersect with other ongoing work:
 
-- **Turn counter resets to 1 on resume.** The pre-resume run had planner turns 1–5; the post-resume run also starts at `turn: 1`. The durable event history now has two `turn: 1` events with very different prompts. Likely intentional ("second attempt within attempt:1"), but consumers replaying the log will need to disambiguate by sequence rather than by turn number.
-- **Ruling ingestion latency.** ~24 s from `ruling-received` (sequence 22) to first planner output (sequence 23). Consistent with the ~20 s spawn baseline observed elsewhere; not a regression.
-- **stdin EPIPE risk on resume held up under faster turnaround.** Resume turns are smaller and faster than initial-run turns; the EPIPE-safe stdin write applied as part of the BUG-WIN-010 fix did not produce any handler firings on the resume path. Worth noting as evidence that the fix is robust beyond the original scenario.
+- **Turn counter resets to 1 on every resume.** The original run had planner turns 1–5; both subsequent resumes also start at `turn: 1`, so `001-events.jsonl` now contains three `turn: 1` events at sequences 3, 23, and 27 with very different prompts. Likely intentional ("fresh planner attempt within attempt: 1") but a downstream consumer correlating events by `(storyRunId, turn)` instead of `sequence` would collide. Mirrors `OBS-WIN-002.d` in [`windows-bugs.md`](./windows-bugs.md).
+- **`finalPackage.evidence.callerInputArtifacts` reflects "caller input received during this invocation," not "caller input that participated in the final acceptance posture."** The verification resume's terminal envelope has `callerInputArtifacts: []` even though it accepts on the strength of the prior resume's ruling. The accepting evidence lives in `acceptanceChecks` (as the `"Approved deviations"` entry), `callerInputHistory.rulings`, and `riskAndDeviationReview.specDeviations[*].approvalSource` — all populated. Any consumer using `evidence.callerInputArtifacts` as a record of which rulings drove acceptance will under-report on resume runs.
+- **Ruling ingestion latency.** ~24 s from `ruling-received` (sequence 22, prior resume) to first planner output (sequence 23). Consistent with the ~20 s codex planner spawn baseline observed elsewhere; not a regression.
+- **stdin EPIPE risk on resume held up under faster turnaround.** Resume turns are smaller and faster than initial-run turns; the EPIPE-safe stdin write applied as part of the BUG-WIN-010 fix did not produce any handler firings on either resume path. Evidence that the fix is robust beyond its original scenario.
 
 ---
 

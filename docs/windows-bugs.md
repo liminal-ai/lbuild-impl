@@ -29,6 +29,8 @@ With v0.4.0 + the local BUG-WIN-008 / BUG-WIN-009 / BUG-WIN-010 patches applied,
 
 A follow-on `story-orchestrate resume` (with a caller ruling artifact written to approve the spec deviations) was attempted on the same day to retest BUG-WIN-006 and to land the story. The resume invocation did not reproduce any Windows-specific defect, but it did surface a **non-Windows runtime defect** in the resume → ruling-ingestion path: caller approvals are recorded in `callerInputHistory.rulings` and `acceptanceChecks` but never propagated into `riskAndDeviationReview.specDeviations[*].approvalStatus`, so the orchestrator re-emits the same `rulingRequest.id` on every resume — an infinite loop with the same ruling. Filed separately as **BUG-IMPL-012** in [`impl-bugs.md`](./impl-bugs.md) since it is platform-agnostic.
 
+After the local BUG-IMPL-012 patch (idempotent reconciliation in `buildStoryLeadFinalPackage`), a third invocation — `story-orchestrate resume` with no new ruling artifact — drove story `00-foundation` to terminal `outcome: accepted` in 21.6 s on Windows. Final-package state: both spec deviations flipped to `approvalStatus: "approved"` / `approvalSource: "caller"`, `rulingRequest: null`, `recommendedImplLeadAction: "accept"`, `commitReadiness: "ready-for-impl-lead-commit"`. **First Windows-host story-00 acceptance since the bug log was opened against v0.3.0** — driven by v0.4.0 + four local patches (BUG-WIN-008, BUG-WIN-009, BUG-WIN-010, BUG-IMPL-012). Pre-patch evidence preserved at `00-foundation.bug-win-010-pre-patch/` and `00-foundation.bug-impl-012-pre-patch/`.
+
 | ID | v0.3.0 status | v0.4.0 retest |
 |---|---|---|
 | BUG-WIN-001 | Local patch | **Fixed in v0.4.0** — `npm run build` completes cleanly on Windows; no doubled drive letter |
