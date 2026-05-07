@@ -10,7 +10,41 @@ Consolidated log of Windows-specific defects discovered while standing up `lbuil
 | Shell tested | Git Bash (MSYS2) and PowerShell — same failure mode in both |
 | Node | v24.14.0 (via fnm) |
 | npm | 11.9.0 |
-| `lbuild-impl` | v0.3.0 (source-linked dev install at `C:\github\lbuild-impl`) |
+| `lbuild-impl` | v0.4.0 (source-linked dev install at `C:\github\lbuild-impl`) |
+
+## v0.4.0 retest status (in progress)
+
+The v0.3.0 entries below are the original report submitted upstream. After v0.4.0 was released by the repo owner, we are re-running the same end-to-end flow on Windows and updating each entry with one of:
+
+- **Fixed in v0.4.0** — owner's fix verified; entry preserved as historical record.
+- **Still reproduces in v0.4.0** — owner's fix incomplete or not addressed; updated repro/diff captured under a `### v0.4.0 retest` subsection.
+- **Regressed differently in v0.4.0** — fix caused a different Windows failure; new failure documented under the same BUG-WIN id.
+- **Did not reproduce in v0.4.0 + patches** — defect did not surface under the retest workload; entry preserved with the observation rather than declared fixed (we don't have enough coverage to claim universal absence).
+
+New issues uncovered against v0.4.0 are filed as `BUG-WIN-007+`.
+
+### Milestone — first clean Windows end-to-end run (2026-05-07)
+
+With v0.4.0 + the local BUG-WIN-008 / BUG-WIN-009 / BUG-WIN-010 patches applied, `lbuild-impl story-orchestrate run --spec-pack-root C:/github/crumb/docs/epics/f0 --story-id 00-foundation --heartbeat --json` completed cleanly on Windows 10 Pro 10.0.19045 in 44m40s. Five planner turns, three child-op completions, real codex execution (5 distinct sessions), real `pnpm`/`git` mutations under `danger-full-access` sandbox, terminal `outcome: needs-ruling` (a legitimate story-level pause on spec-deviation rulings — not a runtime defect). No EPERM, EBUSY, EACCES, ENOENT, EFTYPE, EPIPE, ENAMETOOLONG, sandbox/denial, rename, or PROVIDER_OUTPUT_INVALID across any stream or event log. This is the first observed full-cycle Windows orchestration since the bug log was opened against v0.3.0.
+
+| ID | v0.3.0 status | v0.4.0 retest |
+|---|---|---|
+| BUG-WIN-001 | Local patch | **Fixed in v0.4.0** — `npm run build` completes cleanly on Windows; no doubled drive letter |
+| BUG-WIN-002 | Local patch | **Partially fixed in v0.4.0** — Windows shim handling added (`buildWindowsCommandShimInvocation`), but candidate-ordering bug in `resolveProviderExecutable` reproduces the same `PROVIDER_UNAVAILABLE` surface symptom for any npm-installed codex. See BUG-WIN-008 |
+| BUG-WIN-003 | Local patch | **Resolved by removal in v0.4.0** — copilot provider was removed entirely (commit `e63fd35`); `secondary_harness` enum no longer accepts `"copilot"` so the failure mode is no longer reachable |
+| BUG-WIN-004 | Local patch | **Did not reproduce in v0.4.0 + 008/009/010 patches.** Observed 2026-05-07: `story-lead`/progress writers exercised ≥8× over 44m40s on Windows 10 Pro (5 planner turns + 3 child-op completions), all rename-replace writes coherent; final `001-current.json` and `001-events.jsonl` (20 events) parse cleanly. The v0.3.0 80%-reliable EPERM signature did not surface for this workload. May still fire under denser bursts or larger artifact volumes — leaving open pending heavier reproduction. |
+| BUG-WIN-005 | Local patch | **Did not reproduce in v0.4.0 + 008/009/010 patches.** Observed 2026-05-07: codex implementor added a Prettier dep (`package.json` + `pnpm-lock.yaml` mutated), ran `npm run lint`, `npm run lint:no-direct-kb`, `npm run check-env`, `npm run verify`, and the focused integration test — all green. No sandbox/denial messages in any stream. Sandbox now defaults to `danger-full-access` per `provider-adapters/codex.ts:DEFAULT_CODEX_SANDBOX_MODE` which removes the v0.3.0 surface; leaving open in case a configuration that requests `workspace-write` mode reproduces it. |
+| BUG-WIN-006 | Local patch | _Still pending retest — the 2026-05-07 run drove all 5 planner turns as fresh codex sessions (no `story-orchestrate resume` cycle), so the resume payload path is not yet exercised on Windows. To close: run `story-orchestrate resume` after a Ctrl-C interrupt or after providing rulings to the current `needs-ruling` terminal._ |
+
+New v0.4.0 entries:
+
+| ID | Stage | Summary |
+|---|---|---|
+| BUG-WIN-007 | `npm run build` | `sync-impl-cli-assets` embeds prompt assets with CRLF on Windows, dirtying tracked generated source after every build and shipping CRLF prompts to providers |
+| BUG-WIN-008 | `preflight` (probe) | `resolveProviderExecutable` returns the extension-less POSIX shim ahead of the `.cmd` shim on Windows; Windows can't execute a `#!/bin/sh` file via `execFile`, so codex appears `unavailable` even when `codex --version` works fine in any shell. _Patched locally 2026-05-07: candidate loop now tries PATHEXT extensions before the bare name._ |
+| BUG-WIN-009 | `preflight` (probe) | `buildWindowsCommandShimInvocation` produces args that survive the existing unit test but get mangled by Node's default Windows quote-escaping at `child_process.execFile` time, leaving cmd.exe with literal `\"path\\codex.cmd\"` it cannot resolve. _Patched locally 2026-05-07: cmd-native `""` quote escape + outer wrap + `windowsVerbatimArguments: true`. Combined with BUG-WIN-008 patch, `preflight` now returns `outcome:"ready"` with codex `available:true, tier:binary-present, version:codex-cli 0.128.0`._ |
+| BUG-WIN-010 | `story-orchestrate run` (codex spawn) | Codex adapter passes the planner prompt as a positional argv argument (`codex exec … <prompt>`); on Windows the 81 KB story-00 planner prompt exceeds CreateProcessW's ~32,767-char command-line limit, so `child_process.spawn` rejects synchronously with `ENAMETOOLONG` before codex starts. POSIX `ARG_MAX` is large enough to mask this. _Patched locally 2026-05-07: codex adapter now passes `-` (stdin sentinel) as the prompt arg and pipes `request.prompt` to `child.stdin`; `runProviderCommand` accepts `stdin?: string` and writes it EPIPE-safely after spawn. Also wired `windowsVerbatimArguments: true` for the cmd-shim path here (was missing — latent issue surfaced by BUG-WIN-009's wrap pattern)._ |
+| BUG-WIN-011 | `story-orchestrate run` (durable state) | When the codex child spawn fails before any lifecycle event is emitted, the orchestrator surfaces the error in the response envelope but does not transition the durable story-run lifecycle to a terminal state (`failed`/`errored`). `story-lead/001-current.json` is left at `status:running, lifecycleState:awaiting_story_lead_action` indefinitely; a subsequent `story-orchestrate resume` would treat the run as still alive. |
 
 ## End-to-end acceptance scenario
 
@@ -47,7 +81,8 @@ A regression in any one of these re-blocks the same prompt at the corresponding 
 ## BUG-WIN-001 — `npm run build` fails with doubled drive letter on Windows
 
 **Severity:** Blocker — stops the very first `npm run build` after `npm ci`.
-**Status:** Fixed locally in this working tree (not yet upstreamed). Awaiting repo-owner review.
+**Status (v0.3.0):** Fixed locally in this working tree (not yet upstreamed). Awaiting repo-owner review.
+**Status (v0.4.0):** ✅ **Fixed upstream.** Verified on 2026-05-07 via `npm run build` on Windows 10 Pro 10.0.19045 — `scripts/sync-impl-cli-assets.ts` now resolves the project root correctly and the build completes through `tsup` without ENOENT.
 **Affected:** Any Windows host running `npm run build`.
 
 ### Symptom
@@ -658,6 +693,703 @@ After applying the patch + rebuilding, the same `story-continue` turn that previ
 ### Future-work alternative
 
 Another approach worth considering: have lbuild-impl write the schema to a side file even on resume, then include an instruction in the resume-path prompt template ("your final structured response MUST validate against the schema at /path/to/schema.json — re-read it before emitting"). Codex 0.128.0 supports reading file paths in the prompt. This would restore strict shape without requiring codex CLI to add `--output-schema` to `exec resume`. Untested locally; the consumer-side `.passthrough()` patch is the smaller, more obvious fix that unblocks today.
+
+---
+
+## BUG-WIN-007 — `sync-impl-cli-assets` embeds prompt assets with CRLF on Windows, dirtying generated source and shipping CRLF prompts at runtime
+
+**Severity:** Major — every Windows `npm run build` produces a dirty working tree against a tracked generated file, breaks any "generated artifact in sync" guard on Windows CI/dev, and ships prompts with `\r\n` line endings to provider CLIs (semantically distinct from the LF prompts shipped from POSIX builds).
+**Status:** Open in v0.4.0. First observed on the v0.4.0 retest, but the same code path exists at all versions ≥0.3.0 — it was simply masked in v0.3.0 by BUG-WIN-001 stopping the build before this step ran.
+**Affected:** Any Windows host running `npm run build` against a default Git for Windows clone (`core.autocrlf=true`).
+
+### Symptom
+
+Immediately after a clean `git clone` + `npm ci` + `npm run build` on Windows:
+
+```text
+$ git status
+On branch main
+Changes not staged for commit:
+  modified:   src/core/embedded-assets.generated.ts
+
+$ git diff --stat src/core/embedded-assets.generated.ts
+ src/core/embedded-assets.generated.ts | 74 +++++++++++++++++------------------
+ 1 file changed, 37 insertions(+), 37 deletions(-)
+```
+
+Every `\n` in every embedded prompt string flips to `\r\n`:
+
+```diff
+- "epic-reverifier.md": "# Epic Reverifier Base Prompt\n\n## Confirmed Issues\n..."
++ "epic-reverifier.md": "# Epic Reverifier Base Prompt\r\n\r\n## Confirmed Issues\r\n..."
+```
+
+A subsequent `git status` after `git restore` and `npm run build` reproduces the same diff deterministically.
+
+### Reproduction
+
+```sh
+# fresh Windows clone
+git clone https://github.com/liminal-ai/lbuild-impl.git
+cd lbuild-impl
+git config --get core.autocrlf   # → true (Git for Windows default)
+npm ci
+npm run build
+git status                       # embedded-assets.generated.ts shows as modified
+git diff src/core/embedded-assets.generated.ts | head -5
+# every \n in embedded prompts has been rewritten to \r\n
+```
+
+### Environment evidence
+
+```text
+$ ls .gitattributes
+ls: cannot access '.gitattributes': No such file or directory
+
+$ git config --get core.autocrlf
+true
+
+$ git ls-files --eol src/prompts/base/story-lead.md
+i/lf    w/crlf  attr/                   src/prompts/base/story-lead.md
+```
+
+The repo has no `.gitattributes`, so on a Windows clone with the default `core.autocrlf=true` Git for Windows checks the source `.md` prompt files out as CRLF, even though the index stores them as LF.
+
+### Root cause
+
+`scripts/sync-impl-cli-assets.ts:24,48` reads the on-disk prompt files with `await readFile(path, "utf8")` and embeds the resulting strings verbatim into `EMBEDDED_PROMPT_ASSETS` / `EMBEDDED_SKILL_ASSETS` via `JSON.stringify(value, null, "\t")` (line 76). `readFile` does not normalize newlines, and `JSON.stringify` faithfully encodes `\r` as `\r\n`. Two downstream effects:
+
+1. **Build noise / CI dirty-tree:** the generated file at `src/core/embedded-assets.generated.ts` is committed (was generated on a POSIX runner with LF) but every Windows build rewrites it with CRLF. Anyone running `npm run build` on Windows then sees a phantom modification of a tracked source file, and any `git diff --quiet` / "no uncommitted changes" check in CI on Windows fails.
+2. **Runtime prompt drift:** the CLI ships embedded prompts that contain `\r\n` line endings to provider CLIs (`claude`, `codex`) on Windows but `\n` on POSIX. Token-count, regex-anchored, and format-sensitive provider behavior is therefore platform-dependent in a way the contract tests don't cover.
+
+POSIX is unaffected because `core.autocrlf` only converts on Windows checkouts.
+
+### Suggested fix
+
+Two complementary changes; either alone resolves the build-dirty symptom, both together also harden the runtime prompt contract:
+
+**1. Normalize line endings inside `sync-impl-cli-assets.ts`** so the script is platform-agnostic regardless of how the user's git checked the source files out:
+
+```ts
+async function readNormalized(path: string): Promise<string> {
+    return (await readFile(path, "utf8")).replace(/\r\n/g, "\n");
+}
+```
+
+…and use `readNormalized` everywhere the script currently calls `readFile(path, "utf8")` (`sync-impl-cli-assets.ts:24` in `readMarkdownDirectory`, and `sync-impl-cli-assets.ts:48` in `collectSkillFiles`). This guarantees every embedded prompt string the build emits is `\n`-only on every platform.
+
+**2. Add a `.gitattributes` at repo root** so `.md` prompt sources never check out as CRLF in the first place:
+
+```gitattributes
+# Prompt + skill assets are byte-identical contract material.
+src/prompts/**/*.md text eol=lf
+src/skills/**/*.md  text eol=lf
+# Generated asset payload must round-trip identically across platforms.
+src/core/embedded-assets.generated.ts text eol=lf
+```
+
+Either patch alone fixes the dirty-tree issue. The script-side fix also future-proofs against contributors who clone without honoring `.gitattributes` (e.g. via web download).
+
+### Why this wasn't visible in v0.3.0
+
+In v0.3.0 the build never reached `sync-impl-cli-assets`'s write step on Windows — BUG-WIN-001's doubled-drive-letter `ENOENT` killed the script while reading inputs. v0.4.0 fixed BUG-WIN-001 (verified on this branch), which exposed the previously-shadowed CRLF embedding. So this is technically a latent v0.3.0 defect surfacing as a v0.4.0 regression-of-visibility.
+
+### Verification
+
+After either suggested fix, `npm run build` followed by `git status` should report a clean working tree on Windows, and the embedded prompt strings in `src/core/embedded-assets.generated.ts` should contain only `\n` (no `\r\n`) regardless of host platform.
+
+---
+
+## BUG-WIN-008 — `preflight` reports `codex` unavailable on Windows because `resolveProviderExecutable` prefers the extension-less POSIX shim over `codex.cmd`
+
+**Severity:** Blocker — `preflight` returns `outcome:"blocked"` with `code:"PROVIDER_UNAVAILABLE"`, so no codex-backed command (`story-implement`, `story-continue`, `story-verify`, `quick-fix`, epic verifiers/reverifier) can run on Windows. This is the v0.4.0 reincarnation of BUG-WIN-002: the surface symptom is identical, the root cause is different.
+**Status:** Open in v0.4.0. Reproduced 2026-05-07 against `lbuild-impl@0.4.0` running `preflight` on a default npm-installed codex (`codex-cli 0.128.0`).
+**Affected:** Any Windows host where `codex` was installed via `npm i -g @openai/codex` (the documented installation path), since npm's global install always lays down both `codex` (POSIX shim) and `codex.cmd` (Windows shim) side-by-side in the same PATH directory.
+
+### Symptom
+
+```text
+$ lbuild-impl preflight --spec-pack-root C:/github/crumb/docs/epics/f0 \
+                        --story-gate "npm run lint" \
+                        --epic-gate  "npm run lint" \
+                        --json
+{
+  "command": "preflight",
+  "status": "blocked",
+  "outcome": "blocked",
+  "result": {
+    "providerMatrix": {
+      "primary":   { "harness": "claude-code", "available": true,  "tier": "authenticated-known", "version": "2.1.132 (Claude Code)", "authStatus": "authenticated" },
+      "secondary": [ { "harness": "codex",     "available": false, "tier": "unavailable",         "authStatus": "missing",          "notes": ["Unable to execute codex --version"] } ]
+    },
+    "blockers": ["Requested secondary harness is unavailable: codex"]
+  },
+  "errors": [{ "code": "PROVIDER_UNAVAILABLE", "message": "Requested secondary harness is unavailable: codex", "detail": "Unable to execute codex --version" }]
+}
+```
+
+…even though running `codex --version` in any shell on the same host succeeds:
+
+```text
+$ codex --version
+codex-cli 0.128.0
+$ where codex
+C:\Users\dsavi\AppData\Local\fnm_multishells\12584_1778174966848\codex
+C:\Users\dsavi\AppData\Local\fnm_multishells\12584_1778174966848\codex.cmd
+C:\Users\dsavi\AppData\Roaming\npm\codex
+C:\Users\dsavi\AppData\Roaming\npm\codex.cmd
+```
+
+### Reproduction
+
+```sh
+# fresh Windows host, npm-installed codex (any recent version)
+npm i -g @openai/codex
+codex --version                  # works: "codex-cli 0.128.0"
+
+# any spec pack with a v0.4.0-valid impl-run.config.json that requests codex secondary_harness:
+lbuild-impl preflight --spec-pack-root <pack> --story-gate "npm run lint" --epic-gate "npm run lint" --json
+# → outcome: blocked, errors[0].code = PROVIDER_UNAVAILABLE, "Unable to execute codex --version"
+```
+
+### Root cause
+
+`src/core/provider-executable.ts:97-107` (`resolveProviderExecutable`):
+
+```ts
+for (const directory of pathEntries) {
+    for (const candidate of [
+        input.executable,                              // "codex"  ← tried FIRST
+        ...extensions.map((extension) => `${input.executable}${extension}`),  // "codex.com", ".exe", ".bat", ".cmd"
+    ]) {
+        const candidatePath = join(directory, candidate);
+        if (await pathExists(candidatePath)) {
+            return candidatePath;
+        }
+    }
+}
+```
+
+The candidate loop tries the bare extension-less filename **before** any PATHEXT extension. npm's global install on Windows lays down two files per bin entry — the bare POSIX shim and the `.cmd` shim — both in the same PATH directory. `pathExists` on the bare `codex` succeeds because the POSIX shim is a real file:
+
+```text
+$ file "C:\Users\dsavi\AppData\Local\fnm_multishells\<…>\codex"
+POSIX shell script, ASCII text executable
+
+$ head -2 "C:\Users\dsavi\AppData\Local\fnm_multishells\<…>\codex"
+#!/bin/sh
+basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
+```
+
+So `resolveProviderExecutable` returns the POSIX shim. Then `isWindowsCommandShim` (`provider-executable.ts:38-40`) — which only matches `\.(?:cmd|bat)$` — returns `false`, so `runCommand` (`provider-checks.ts:42-51`) skips the `cmd.exe /d /s /c` wrapper and tries to spawn the bare file directly via `execFile`. Windows's process loader cannot execute a `#!/bin/sh` script — there is no `.sh`-or-equivalent shebang handling — so `execFile` returns `ENOENT`. `provider-checks.ts:231` then sets `authStatus: "missing"` and `provider-checks.ts:151` produces the surface message `Unable to execute codex --version`.
+
+POSIX is unaffected because `resolveProviderExecutable` early-returns on non-`win32` platforms (`provider-executable.ts:79-82`) and POSIX shells happily execute the shebang shim.
+
+### Why BUG-WIN-002 looked fixed
+
+v0.4.0 *did* introduce real Windows shim handling (`buildWindowsCommandShimInvocation`, PATH walking with PATHEXT, `cmd.exe /d /s /c` invocation). On a host where the bare extension-less file is absent — for instance a `.cmd`-only install, or a system PATH that hits `.cmd` first by virtue of layout — the new code path works correctly. The bug only manifests when both files coexist in the same directory, which is the default for any npm install. So local testing on a host without the bare shim (or with `git-bash`'s shim layout, or with a hand-installed `codex.cmd`) would show BUG-WIN-002 as resolved.
+
+### Suggested fix
+
+The minimal fix is to invert candidate priority on Windows: only fall back to the extension-less filename *after* exhausting PATHEXT. Replace the candidate list at `provider-executable.ts:98-101` with:
+
+```ts
+for (const candidate of [
+    ...extensions.map((extension) => `${input.executable}${extension}`),  // try .com/.exe/.bat/.cmd first
+    input.executable,                                                     // bare name only as a last resort
+])
+```
+
+A defensive secondary improvement is to teach `isWindowsCommandShim` (or the dispatch logic in `provider-checks.ts:42-51`) to detect non-executable script files and either reject them outright or wrap them via `cmd.exe`. But the candidate-order fix alone resolves the observed regression because npm always installs `.cmd` alongside the bare shim.
+
+A third complementary fix is to honor the actual `where`-style behavior Windows users expect: when PATHEXT contains an extension and a candidate with that extension exists in PATH, that candidate wins over a bare-name file in the same directory.
+
+### Verification (after fix)
+
+The candidate-order patch was applied locally on 2026-05-07 (`provider-executable.ts:97-107`):
+
+```diff
+ for (const candidate of [
+-    input.executable,
+-    ...extensions.map((extension) => `${input.executable}${extension}`),
++    ...extensions.map((extension) => `${input.executable}${extension}`),
++    input.executable,
+ ]) {
+```
+
+After rebuild, `preflight` correctly resolves codex to `C:\Users\<…>\codex.cmd` instead of the bare POSIX shim. **However**, the run still ends in `PROVIDER_UNAVAILABLE` because of a separately-buried Windows defect in the cmd.exe wrapper itself — see BUG-WIN-009. Together, BUG-WIN-008 (resolution) and BUG-WIN-009 (invocation) form the full v0.4.0 reincarnation of v0.3.0's BUG-WIN-002.
+
+---
+
+## BUG-WIN-009 — `buildWindowsCommandShimInvocation` produces cmd.exe args that get mangled by Node's default Windows quote-escaping
+
+**Severity:** Blocker — even after BUG-WIN-008 is patched, `preflight` still returns `PROVIDER_UNAVAILABLE` because cmd.exe cannot parse the wrapped invocation. Same surface symptom as BUG-WIN-002/008 from a third independent root cause.
+**Status:** Open in v0.4.0. Reproduced 2026-05-07 against a locally-patched v0.4.0 build (BUG-WIN-008 fixed) on Windows 10 Pro.
+**Affected:** Any Windows codex invocation routed through `runCommand → buildWindowsCommandShimInvocation`. The unit test at `tests/unit/core/provider-executable-resolution.test.ts:216-230` covers the produced *value* but does not exercise an actual spawn, so the defect is not regression-protected.
+
+### Symptom
+
+After BUG-WIN-008 is patched and `resolveProviderExecutable` correctly returns `C:\Users\<…>\codex.cmd`, `preflight` still fails:
+
+```text
+"providerMatrix": {
+  "secondary": [
+    {
+      "harness": "codex",
+      "available": false,
+      "tier": "unavailable",
+      "authStatus": "unknown",
+      "notes": [
+        "'\"C:\\Users\\dsavi\\AppData\\Local\\fnm_multishells\\12584_1778174966848\\codex.cmd\"' is not recognized as an internal or external command,\r\noperable program or batch file."
+      ]
+    }
+  ]
+}
+```
+
+cmd.exe is reporting that the literal string `\"C:\Users\…\codex.cmd\"` (with backslash-escaped quotes preserved) is not a recognized command. In any normal shell, the same `codex.cmd --version` runs in tens of milliseconds and exits 0.
+
+### Reproduction
+
+```sh
+# 1. apply BUG-WIN-008 candidate-order patch
+# 2. ensure codex.cmd is resolvable in PATH (npm-installed codex)
+# 3. run preflight against any spec pack with codex secondary_harness
+lbuild-impl preflight --spec-pack-root <pack> --story-gate "npm run lint" --epic-gate "npm run lint" --json
+# → "Unable to execute …" message containing literal \" sequences in the path
+```
+
+### Root cause
+
+`src/core/provider-executable.ts:46-63` — `buildWindowsCommandShimInvocation`:
+
+```ts
+return {
+    file: input.env?.COMSPEC ?? process.env.COMSPEC ?? "cmd.exe",
+    args: [
+        "/d",
+        "/s",
+        "/c",
+        [input.executable, ...input.args].map(quoteWindowsCmdArg).join(" "),
+    ],
+};
+```
+
+…and `quoteWindowsCmdArg`:
+
+```ts
+function quoteWindowsCmdArg(value: string): string {
+    return `"${value.replaceAll('"', '\\"')}"`;
+}
+```
+
+So for `codex.cmd --version` the function returns `args: ["/d", "/s", "/c", '"C:\\Tools\\codex.cmd" "--version"']`. The final element is a single string containing two quoted tokens.
+
+`provider-checks.ts:55-79` then passes this to `child_process.execFile(file, args, options, cb)` *without* `windowsVerbatimArguments: true`. Node's Windows spawn implementation walks the args array and, because the 4th arg contains spaces and quotes, wraps it in another set of quotes and backslash-escapes the inner quotes to disambiguate. The actual command line the kernel sees becomes:
+
+```text
+cmd.exe /d /s /c "\"C:\Tools\codex.cmd\" \"--version\""
+```
+
+cmd.exe with `/s /c` then applies its rule-2 quote-stripping: strip the leading `"` and the trailing `"`, leaving:
+
+```text
+\"C:\Tools\codex.cmd\" \"--version\
+```
+
+cmd does not interpret backslash-escaped quotes — it has no `\"` escape grammar. So it tries to find an executable literally named `\"C:\Tools\codex.cmd\"` (leading backslash, trailing backslash) and fails with the observed `is not recognized as an internal or external command` error.
+
+The unit test at `tests/unit/core/provider-executable-resolution.test.ts:227-230` only inspects the in-memory args array — it never actually spawns cmd.exe — so the defect ships with green tests.
+
+### Suggested fix
+
+Two options. The simpler one is preferred.
+
+**Option A — verbatim args + cmd-correct escaping:**
+
+Pass `windowsVerbatimArguments: true` from `runCommand` (`provider-checks.ts:53-79`) and have `buildWindowsCommandShimInvocation` produce a single command-line string whose quoting follows cmd.exe rules (not Node's MSVCRT-style rules). For paths without spaces this is just unquoted; for paths with spaces, double the inner quotes (cmd's `""` escape) or use a quote-once-strip-once trick:
+
+```ts
+function buildShimCommandLine(executable: string, args: string[]): string {
+    const cmdQuote = (v: string) =>
+        /[\s"&<>()@^|]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+    return [executable, ...args].map(cmdQuote).join(" ");
+}
+
+return {
+    file: COMSPEC,
+    args: ["/d", "/s", "/c", buildShimCommandLine(input.executable, input.args)],
+    // and at the spawn site:
+    // execFile(file, args, { ...opts, windowsVerbatimArguments: true }, cb)
+};
+```
+
+**Option B — stop wrapping and use `shell: true`:**
+
+Drop the manual cmd.exe wrapper entirely and pass `shell: true` to `execFile`. Trades the quoting bug for command-injection surface (every arg becomes shell-interpreted) — only acceptable if all arg values come from a strict allowlist, which is roughly true here (just `--version`, `auth status`).
+
+### Why the existing unit test missed it
+
+`tests/unit/core/provider-executable-resolution.test.ts:216-230` asserts the literal value of `invocation.args`, including `'"C:\\Tools\\codex.cmd" "--version"'`. That value is correct in isolation — the bug is what happens after `child_process` re-quotes it. To catch this kind of defect the unit test would need to cover the full spawn path (or a Node-level integration test that asserts the kernel-visible command line via `windowsVerbatimArguments` + a known-good fake), not the function's return value alone.
+
+### Verification (after fix)
+
+Option A was applied locally on 2026-05-07. Three coordinated edits:
+
+1. `src/core/provider-executable.ts:42` — `quoteWindowsCmdArg` now uses cmd's native `""` escape:
+
+```diff
+ function quoteWindowsCmdArg(value: string): string {
+-    return `"${value.replaceAll('"', '\\"')}"`;
++    return `"${value.replaceAll('"', '""')}"`;
+ }
+```
+
+2. `src/core/provider-executable.ts:46-63` — `buildWindowsCommandShimInvocation` now wraps the joined inner command in outer quotes (the `cmd.exe /d /s /c "<wrapped>"` pattern that survives `/s` quote-stripping):
+
+```diff
+ export function buildWindowsCommandShimInvocation(input): { file; args } {
++    const inner = [input.executable, ...input.args]
++        .map(quoteWindowsCmdArg)
++        .join(" ");
+     return {
+         file: input.env?.COMSPEC ?? process.env.COMSPEC ?? "cmd.exe",
+-        args: [
+-            "/d", "/s", "/c",
+-            [input.executable, ...input.args].map(quoteWindowsCmdArg).join(" "),
+-        ],
++        args: ["/d", "/s", "/c", `"${inner}"`],
+     };
+ }
+```
+
+3. `src/core/provider-checks.ts:40-63` — `runCommand` now passes `windowsVerbatimArguments: true` when invoking the shim, so Node forwards the constructed command line to the kernel verbatim instead of re-escaping it MSVCRT-style:
+
+```diff
+ const platform = params.platform ?? process.platform;
+-const command =
+-    platform === "win32" && isWindowsCommandShim(resolvedExecutable)
+-        ? buildWindowsCommandShimInvocation({ … })
+-        : { file: resolvedExecutable, args: params.args };
++const useShim =
++    platform === "win32" && isWindowsCommandShim(resolvedExecutable);
++const command = useShim
++    ? buildWindowsCommandShimInvocation({ … })
++    : { file: resolvedExecutable, args: params.args };
+ …
+ getExecFileImplementation()(
+     command.file,
+     command.args,
+     {
+         cwd: params.cwd,
+         env: filterEnv(process.env, params.env),
+         timeout: params.timeoutMs,
+         encoding: "utf8",
++        ...(useShim ? { windowsVerbatimArguments: true } : {}),
+     },
+     …
+ );
+```
+
+The unit-test snapshot at `tests/unit/core/provider-executable-resolution.test.ts:227-230` was updated to match the new wrapping pattern (`'""C:\\Tools\\codex.cmd" "--version""'`).
+
+**Verified on 2026-05-07:** with both BUG-WIN-008 and BUG-WIN-009 patches applied, `lbuild-impl preflight --spec-pack-root C:/github/crumb/docs/epics/f0 --story-gate "npm run lint" --epic-gate "npm run lint" --json` returns:
+
+```text
+status: ok  outcome: ready
+blockers: []
+  claude-code  available: true   tier: authenticated-known   version: 2.1.132 (Claude Code)
+  codex        available: true   tier: binary-present        version: codex-cli 0.128.0
+```
+
+### Test-suite note
+
+The companion test file `tests/unit/core/provider-executable-resolution.test.ts` has 3 test cases that fail on a real Windows host independently of this patch (verified by running them on clean main with my changes stashed: same failures). The fixtures rely on `#!/bin/sh` shebang scripts and a `cmd-emulator.js` that don't behave correctly under the native Windows process loader. They are pre-existing Windows-host-environment failures, not regressions introduced by this fix.
+
+---
+
+## BUG-WIN-010 — `story-orchestrate run` fails immediately with `spawn ENAMETOOLONG` because the codex adapter passes the planner prompt as a positional argv argument
+
+**Severity:** Blocker — every story whose first planner turn produces a prompt larger than ~32 KB cannot run on Windows. Story-00 of crumb's F0 epic crosses that threshold on turn 1 (81,474-byte planner prompt), so `story-orchestrate run` self-terminates in 93 ms before codex ever starts.
+**Status:** Open in v0.4.0. Reproduced 2026-05-07 against a locally-patched v0.4.0 build (BUG-WIN-008 + BUG-WIN-009 already applied) on Windows 10 Pro running through `C:\github\crumb\docs\epics\f0` story-id `00-foundation`.
+**Affected:** Any Windows host running `story-orchestrate run` (or `resume`) on any spec pack whose composed planner prompt for a turn exceeds Windows's `CreateProcessW` command-line limit (32,767 characters total, including the resolved executable path, all preceding args, and any cmd.exe wrapper overhead).
+
+### Symptom
+
+```text
+$ lbuild-impl story-orchestrate run --spec-pack-root C:/github/crumb/docs/epics/f0 \
+                                    --story-id 00-foundation --heartbeat --json
+[progress] story-orchestrate run phase=story-orchestrate-run status=…\story-lead\001-current.json
+Oriented from existing artifacts: 001-story-validate.json, 002-story-validate.json
+{
+  "command": "story-orchestrate run",
+  "version": 1,
+  "status": "error",
+  "outcome": "error",
+  "errors": [{"code": "ENAMETOOLONG", "message": "spawn ENAMETOOLONG"}],
+  "warnings": [],
+  "artifacts": [{"kind":"result-envelope","path":"…\\003-story-orchestrate-run.json"}],
+  "startedAt":  "2026-05-07T18:03:24.174Z",
+  "finishedAt": "2026-05-07T18:03:24.267Z"
+}
+```
+
+Wall-clock 93 ms. No stack trace emitted. No codex output captured (`streams/001-story-lead.stdout.log` and `.stderr.log` are both 0 bytes — the failure is on the parent process's `child_process.spawn` call, before any stdio handle is opened).
+
+### Reproduction
+
+1. Apply BUG-WIN-008 + BUG-WIN-009 patches so `preflight` returns `outcome:"ready"` for codex on Windows.
+2. Wire any `impl-run.config.json` whose `story_lead_provider` is `{ secondary_harness: "codex", model: "gpt-5.5", reasoning_effort: "high" }` (the recommended setup per `src/skills/ls-impl/phases/20-story-cycle.md:84`).
+3. Choose any story whose first planner turn would produce a prompt larger than ~32 KB. (Crumb's F0 story `00-foundation` produces ~81 KB on turn 1; this is typical for any story that orients across an entire epic with full tech-design + test-plan composed in.)
+4. Run:
+
+```sh
+lbuild-impl story-orchestrate run --spec-pack-root <pack> --story-id <story> --heartbeat --json
+```
+
+→ envelope returns `status:"error", outcome:"error", errors:[{code:"ENAMETOOLONG", message:"spawn ENAMETOOLONG"}]` within 100 ms.
+
+### Root cause
+
+`src/core/provider-adapters/codex.ts:65-90` builds the codex argv by appending `request.prompt` as a trailing positional argument:
+
+```ts
+const args = request.resumeSessionId
+    ? [
+            ...codexGlobalArgs,
+            "exec",
+            "resume",
+            "--json",
+            "-o",
+            outputLastMessagePath,
+            request.resumeSessionId,
+            request.prompt,                       // ← prompt as argv
+        ]
+    : [
+            ...codexGlobalArgs,
+            "exec",
+            "--json",
+            "-m",
+            request.model,
+            "-c",
+            `model_reasoning_effort=${request.reasoningEffort}`,
+            ...(canUseStructuredOutputSchema
+                ? ["--output-schema", outputSchemaPath]
+                : []),
+            "-o",
+            outputLastMessagePath,
+            request.prompt,                       // ← prompt as argv
+        ];
+```
+
+Those args are then passed to `runProviderCommand` (`src/core/provider-adapters/shared.ts:394-429`) which resolves the executable, wraps Windows `.cmd` shims via `buildWindowsCommandShimInvocation`, and finally calls `getSpawnImplementation()(command.file, command.args, …)`.
+
+On Windows, `child_process.spawn` ultimately calls the Win32 `CreateProcessW` API, which has a hard upper bound on the combined command-line length: **32,767 characters** (the `lpCommandLine` parameter is documented at `MAX_PATH * 2` historically, raised to 32,767 in modern Windows; see Microsoft docs for `CreateProcessW`). Any prompt that — together with the resolved executable path, all preceding args, the cmd.exe wrapper (`cmd.exe /d /s /c "<inner>"`), and Windows quoting overhead — exceeds that limit fails synchronously with `ENAMETOOLONG`.
+
+For story `00-foundation`, the planner prompt that the orchestrator wrote to disk for traceability is **81,474 bytes** (`…\story-lead\prompts\001-planner-turn-001.md`) — well above the 32,767-char ceiling, even before any wrapping overhead. The orchestrator wrote the prompt to disk *and* inlined it as argv; only the second copy reaches `CreateProcessW`, and only the second copy fails.
+
+POSIX hosts are typically unaffected: Linux's `ARG_MAX` is usually 128 KB–2 MB, macOS is 256 KB+, so an 81 KB prompt fits comfortably.
+
+### Side effect — durable state stranded mid-lifecycle
+
+The synchronous spawn failure short-circuits the lifecycle writer. After this run:
+
+- `story-lead/001-current.json` reads `status:"running", lifecycleState:"awaiting_story_lead_action", currentPhase:"story-orchestrate-run", nextIntent:"orient-from-disk"`.
+- `progress/001-story-lead.status.json` mirrors the same.
+- `001-events.jsonl` contains one `story-run-started` event and no `story-run-failed`/`errored` terminal record.
+
+A subsequent `story-orchestrate resume` would see the run as still alive. Filed separately as **BUG-WIN-011**.
+
+### Suggested fix
+
+Three options, in order of preference:
+
+**Option A — write prompt to a temp file, pass `--prompt-file <path>`** (or whichever file-path arg codex supports). This is the cleanest surface: the orchestrator already writes the prompt to `…\story-lead\prompts\NNN-planner-turn-NNN.md` for traceability, so a tiny adjustment lets the spawn site reuse that same path instead of inlining the prompt:
+
+```ts
+const promptFile = await writePromptFile(request); // already done elsewhere; reuse the path
+const args = [
+    ...codexGlobalArgs,
+    "exec",
+    "--json",
+    "-m", request.model,
+    "-c", `model_reasoning_effort=${request.reasoningEffort}`,
+    ...(canUseStructuredOutputSchema ? ["--output-schema", outputSchemaPath] : []),
+    "-o", outputLastMessagePath,
+    "--prompt-file", promptFile,           // ← path, not contents
+];
+```
+
+(Confirm `--prompt-file` flag name against codex 0.128.0; if codex does not support a prompt-file flag, use Option B.)
+
+**Option B — pipe prompt to codex stdin.** Most CLI tools accept stdin when no positional prompt is supplied, or with an explicit `-` sentinel. This bypasses argv length limits entirely and matches POSIX behavior on Windows. Requires:
+
+- removing `request.prompt` from the args array;
+- wiring `child.stdin.write(request.prompt)` + `child.stdin.end()` in `runProviderCommand` immediately after spawn;
+- testing that codex's `exec` and `exec resume` modes both honor stdin without a positional prompt.
+
+**Option C (Windows-specific guard, defense in depth):** in `runProviderCommand`, detect when the constructed command line on Windows would exceed 32,767 chars and either fail with a structured `PROVIDER_PROMPT_TOO_LONG` error (so the orchestrator can surface a helpful blocker instead of an opaque `spawn ENAMETOOLONG`) or transparently fall back to a temp-file/stdin path. This catches edge cases where prompts grow unexpectedly large mid-run.
+
+Option A or B alone resolves the observed regression; Option C is recommended on top of either as a safety net.
+
+### Why this wasn't visible in v0.3.0
+
+v0.3.0's `preflight` failed on Windows before any provider could spawn (BUG-WIN-002, BUG-WIN-003), so the prompt-as-argv path was never exercised. Fixing those preflight blockers in v0.4.0 (plus BUG-WIN-008 and BUG-WIN-009 to actually reach a green probe) exposed the previously-shadowed argv-length defect. So this is a latent v0.3.0+ bug surfacing as a v0.4.0-visibility regression — analogous to BUG-WIN-007's relationship to BUG-WIN-001.
+
+### Verification
+
+Option B (stdin) was applied locally on 2026-05-07. Edits:
+
+1. `src/core/provider-adapters/codex.ts:65-90` — final positional arg is now `"-"` (codex's documented stdin sentinel) instead of the inlined prompt; the prompt is forwarded to `runProviderCommand` via a new `stdin` field.
+2. `src/core/provider-adapters/shared.ts:349-415` — `runProviderCommand` accepts `stdin?: string` and, after spawn, writes it to `child.stdin` and ends the stream. The write is wrapped with an `error` handler so EPIPE on child early-exit (e.g. test fakes that don't read stdin) does not surface as an unhandled error.
+3. `src/core/provider-adapters/shared.ts:425-433` — also passes `windowsVerbatimArguments: true` whenever the cmd-shim wrapper is in play (parallel to the BUG-WIN-009 fix in `provider-checks.ts`; this site was missing it, so it would have broken once the prompt-as-argv length issue stopped firing first).
+
+Test snapshot at `tests/unit/core/provider-adapter.test.ts:631,644,928,943` updated: assertions now expect the last arg to be `"-"` instead of the literal prompt JSON.
+
+Codex 0.128.0 contract (per `codex exec --help`):
+
+> Initial instructions for the agent. If not provided as an argument (or if `-` is used), instructions are read from stdin.
+
+So the patched invocation reads stdin verbatim regardless of prompt size, eliminating the CreateProcessW length cap from the picture.
+
+Note: the prompt size itself is **not** unreasonable for the story being driven (story-00's 81 KB is `## Requirements Source` (story file) + `## TC → Test Mapping` + `## Test Architecture` + state machinery; the prompt header explicitly excludes epic.md, tech-design.md, git diff, and workspace summaries). Smaller stories produce smaller prompts. The defect was the transport, not the composition.
+
+### Parallel issue not patched in this round
+
+`src/core/provider-adapters/claude-code.ts:20-22` follows the same shape — the prompt is passed to `claude -p <prompt>` as a positional argument. Any host using claude-code as a secondary harness (which v0.4.0 supports for `secondary_harness:"none"` roles backed by Claude) would hit the same 32 KB ceiling on Windows. Not exercised on this run because `story_lead_provider` is wired to codex; flag for follow-up.
+
+---
+
+## BUG-WIN-011 — Story-run lifecycle is not transitioned to a terminal state when child spawn fails synchronously
+
+**Severity:** Major — a `story-orchestrate run` that fails before any lifecycle event leaves durable state at `status:"running"`, so a future `story-orchestrate resume` invocation will treat the run as still alive and either retry indefinitely or behave incorrectly.
+**Status:** Open in v0.4.0. Reproduced 2026-05-07 as a side effect of BUG-WIN-010 on Windows.
+**Affected:** Any environment where the codex (or claude) child spawn fails before the parent receives a `provider-spawned` lifecycle event — Windows ENAMETOOLONG is the demonstrated case, but the same asymmetry would apply to ENOENT, EACCES, or any synchronous spawn rejection.
+
+### Symptom
+
+After BUG-WIN-010 fires:
+
+```text
+$ cat .../story-lead/001-current.json | jq '{status, lifecycleState, currentPhase, nextIntent}'
+{
+  "status":         "running",
+  "lifecycleState": "awaiting_story_lead_action",
+  "currentPhase":   "story-orchestrate-run",
+  "nextIntent":     "orient-from-disk"
+}
+
+$ wc -l .../story-lead/001-events.jsonl
+1 .../story-lead/001-events.jsonl
+
+$ jq '.type' .../story-lead/001-events.jsonl
+"story-run-started"
+```
+
+No `story-run-failed`, `story-run-errored`, or any terminal lifecycle record. The CLI return envelope reports `status:"error"` cleanly, but that information never makes it into the durable `story-lead/` directory.
+
+### Root cause (likely)
+
+The lifecycle-event writer is presumably wired into the post-spawn lifecycle stream (`provider-spawned` → `active-silent` → `provider-output` → … → `provider-exit`). When `child_process.spawn` rejects synchronously (before the `provider-spawned` event is emitted), the orchestrator's `try/catch` around the spawn returns the error envelope to the CLI but no equivalent durable terminal-state write is performed.
+
+The asymmetry: an in-flight provider failure (post-spawn) writes a terminal lifecycle event, but a parent-side spawn rejection does not.
+
+### Suggested fix
+
+In whichever orchestrator entry point catches the spawn failure (likely around `provider-adapters/shared.ts:425` or one layer up in story-orchestrate-run), before returning the error envelope, persist a terminal lifecycle event with the spawn error reason. Pseudocode:
+
+```ts
+try {
+    const execution = await runProviderCommand({…});
+    …
+} catch (spawnError) {
+    await emitDurableLifecycleEvent({
+        type: "story-run-failed",
+        reason: "provider-spawn-error",
+        errorCode: spawnError.code ?? "UNKNOWN",
+        errorMessage: spawnError.message,
+        timestamp: new Date().toISOString(),
+    });
+    await transitionStoryRunState({
+        status: "error",
+        lifecycleState: "errored",
+    });
+    throw spawnError;
+}
+```
+
+This way `story-orchestrate resume` (and any external observer) sees a coherent terminal state and can act accordingly (require explicit user intervention, surface the error, refuse to resume a permanently-failed run, etc.).
+
+### Verification
+
+After applying the fix, repro BUG-WIN-010 once and inspect:
+
+```sh
+$ jq '.type' .../story-lead/001-events.jsonl
+"story-run-started"
+"story-run-failed"     # ← new terminal event
+
+$ cat .../story-lead/001-current.json | jq '{status, lifecycleState}'
+{
+  "status":         "error",
+  "lifecycleState": "errored"
+}
+```
+
+…and `story-orchestrate resume` should then refuse with a structured "story already terminated" error rather than attempting to reorient.
+
+---
+
+## OBS-WIN-001 — `preflight` mutates the user's `impl-run.config.json` as a side effect
+
+**Severity:** Observation (not a blocker, but possibly unintended).
+**Status (v0.4.0):** Reproduces deterministically. Not necessarily Windows-specific.
+
+### Observation
+
+Running `preflight` against an epic where `verification_gates` are supplied via `--story-gate` / `--epic-gate` flags causes the runtime to write the resolved values back into the on-disk `impl-run.config.json`. Visible in the envelope:
+
+```json
+"notes": [
+  "Persisted resolved verification_gates into impl-run.config.json for downstream CLI commands."
+]
+```
+
+Before the run, our config had no `verification_gates` key (matched f1's shape); after the run, `verification_gates: { "story": "npm run lint", "epic": "npm run lint" }` had been added by the CLI.
+
+### Why it's worth noting
+
+`preflight` is documented as a read-only readiness check. Mutating a tracked configuration file as a side effect:
+
+- surprises users running `git status` after `preflight`
+- conflicts with the principle that the CLI's "what's ready?" command shouldn't change source
+- creates a race when `preflight` is invoked from CI on a checked-out worktree (next CI step sees a dirty tree)
+
+If this persistence behavior is intentional (so downstream commands can read gates without re-passing flags), the fix surface is documentation + a flag to opt out (`--no-persist-gates` or similar), or writing the resolved gates into a runtime-state file outside the tracked config. As-is on Windows this also compounds with BUG-WIN-007 — every `preflight` *also* dirties `embedded-assets.generated.ts` if the runtime is being dogfooded from this repo.
+
+Filed as an observation rather than a bug because it may be a design choice; logging here so the v0.4.0 review can decide.
+
+---
+
+## OBS-WIN-002 — Envelope contract heads-up from the first clean Windows run
+
+**Severity:** Observations (not bugs). Surfaced 2026-05-07 from the first end-to-end Windows orchestrate. Logging here so anyone wiring downstream tooling against the v0.4.0 envelope is aware. None of these would have been visible from any prior Windows run because the runtime never reached a successful terminal turn before this one.
+
+### a) `terminalDecision: "accept"` co-located with `outcome: "needs-ruling"`
+
+Story-lead's planner emitted `terminalDecision: "accept"` on sequence 20, but the runtime correctly downgraded the envelope to `outcome: needs-ruling` because two `riskAndDeviationReview.specDeviations[*].approvalStatus` entries were `needs-ruling` with `approvalSource: null`. The labeling is defensible, but the dual signal is subtle — a reader skimming `terminalDecision` alone would conclude the story was accepted.
+
+### b) Acceptance checks pass while envelope parks at `needs-ruling`
+
+`acceptanceChecks` and `verification.findings` all read `pass` / `fixed` while the run terminates at `needs-ruling`. The gate that holds the story is the spec-deviation approval status, which is independent of verifier findings. Anyone scripting against the envelope to decide "story complete?" should check `outcome` and `riskAndDeviationReview.specDeviations[*].approvalStatus` together, not `verification.outcome` alone.
+
+### c) No `story-run-completed` / `story-run-finished` event in the suspended-terminal case
+
+The only terminal event written to `001-events.jsonl` is `needs-ruling` (sequence 20). There is no `story-run-completed` or `story-run-finished` event. Probably intentional — the run is suspended pending rulings, not concluded — but downstream analytics that grep for a single canonical `story-run-finished` terminator will miss this branch.
+
+### d) Five fresh codex sessions, zero session-resumes across consecutive planner turns
+
+All five planner turns opened **fresh** codex sessions (each `story-lead-provider-started` event explicitly says "Fresh story-lead provider turn executed without planner session resume."), even when consecutive turns were 6–11 ms apart at the parent level. `storyImplementor.sessionId` and `storyVerifier.sessionId` are present in the final package but never round-tripped. If session resume is intended to be the cheaper path, something is opting out of it; if fresh-per-turn is the design, it just means the resume payload code path (and BUG-WIN-006's surface) is not exercised by a non-interrupted `run`. Closing BUG-WIN-006's retest requires an explicit `story-orchestrate resume` invocation.
 
 ---
 
